@@ -15,8 +15,13 @@ from indexed.config.errors import IndexedError
 
 from indexed.cli.errors import MCPError, mcp_error_envelope
 from .collection_errors import unresolvable_collection_error
-from .config import resolve_cli_context, resolve_config as _resolve_config
+from .config import resolve_config as _resolve_config
 from .formatting import build_search_payload
+from .scope import (
+    RequestScope,
+    require_in_scope,
+    resolve_request_scope,
+)
 
 # Derived once from the SourceConfig Literal so the set stays in sync with the model.
 _ALLOWED_SOURCE_TYPES: frozenset[str] = frozenset(
@@ -93,11 +98,55 @@ def _unresolvable_collection_envelope(
     )
 
 
+def _source_config(name: str, status: Any) -> SourceConfig:
+    """Route one collection by its own manifest, never by a configured default."""
+    raw_source_type = status.source_type if status.source_type else None
+    # Whitelist against the SourceConfig Literal; unknown on-disk types fall back
+    # to "localFiles" so a corrupt manifest never raises ValidationError.
+    source_type = (
+        raw_source_type if raw_source_type in _ALLOWED_SOURCE_TYPES else "localFiles"
+    )
+    return SourceConfig(
+        name=name,
+        type=source_type,
+        base_url_or_path="",
+        indexer=status.indexers[0],
+    )
+
+
+def _scoped_configs(
+    scope: RequestScope,
+) -> "tuple[Optional[List[SourceConfig]], Optional[Dict[str, Any]]]":
+    """Search configs for exactly the request's selected collections.
+
+    Returns ``(configs, None)`` or ``(None, error_envelope)``. A selected
+    collection the store can no longer serve is an error, never a silently
+    narrower search: the definition named it, so the answer is about it.
+    """
+    collections_path = str(scope.collections_path)
+    try:
+        statuses = svc_status(collections_path=collections_path)
+    except IndexedError as e:
+        return None, mcp_error_envelope(e)
+    except Exception as e:  # noqa: BLE001 - MCP boundary must never leak a raw error
+        logger.exception("Unexpected error while resolving the request's scope")
+        return None, mcp_error_envelope(MCPError(f"Internal error: {e}"))
+
+    by_name = {status.name: status for status in statuses}
+    configs: List[SourceConfig] = []
+    for name in scope.names:
+        status = by_name.get(name)
+        if status is None or not status.indexers:
+            return None, _unresolvable_collection_envelope(name, collections_path)
+        configs.append(_source_config(name, status))
+    return configs, None
+
+
 def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
     """Register search tools on the FastMCP instance."""
 
     @mcp.tool
-    def search(
+    async def search(
         query: str,
         changed_since: Optional[str] = None,
         git_provenance: Optional[bool] = None,
@@ -106,7 +155,14 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
         include_freshness: Optional[bool] = None,
         ctx: Optional[Context] = None,
     ) -> Dict[str, Any]:
-        """Search all available document collections for semantically similar content.
+        """Search the collections this client's repository selects.
+
+        Scope is per request: the server reads the client's MCP roots, finds the
+        committed `indexed.toml` at the repository root and searches exactly its
+        selection from the global store. With no roots, no definition, or two
+        conflicting definitions the call returns the documented error envelope
+        (`NoRequestScopeError` / `AmbiguousRequestScopeError`) and searches
+        nothing — it never falls back to every collection.
 
         Returns the documented machine payload (schema ``indexed.search/1``):
         matched documents, each stating its collection, source type, id, url
@@ -131,21 +187,27 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             include_freshness (Optional[bool]): Add a per-collection ``freshness``
                 verdict (fresh/stale/unknown) to the envelope — how far behind the
                 source working tree each index is.
-            ctx (Optional[Context]): FastMCP Context (optional, for accessing lifespan state).
+            ctx (Optional[Context]): FastMCP Context — carries this client's MCP
+                roots, which decide the request's scope.
 
         Returns:
             dict: ``{schema, query, counts, collections, collection_errors,
                 documents}`` — documents ranked by their best hit.
         """
         search_cfg = _resolve_config(ctx, "search_config", get_search_config)
-        cli_ctx = resolve_cli_context(ctx)
-        collections_path = str(cli_ctx.collections_path)
+        try:
+            scope = await resolve_request_scope(ctx)
+        except IndexedError as e:
+            return mcp_error_envelope(e)
+        configs, error = _scoped_configs(scope)
+        if error is not None:
+            return error
 
         return _run_search(
             query,
-            None,
+            configs,
             search_cfg,
-            collections_path,
+            str(scope.collections_path),
             changed_since=changed_since,
             git_provenance=git_provenance,
             git_line_blame=git_line_blame,
@@ -154,7 +216,7 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
         )
 
     @mcp.tool
-    def search_collection(
+    async def search_collection(
         collection: str,
         query: str,
         changed_since: Optional[str] = None,
@@ -168,6 +230,11 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
 
         Returns the same documented payload as the general search tool
         (schema ``indexed.search/1``), restricted to one collection.
+
+        The collection must be in this client's request scope (the selection of
+        the `indexed.toml` at the repository root): a name outside it returns a
+        `CollectionOutsideScopeError` envelope, so a client cannot reach another
+        project's collections by naming one.
 
         Args:
             collection: Name of the collection to search
@@ -186,14 +253,18 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
                 (defaults to core.v1.search.git_rerank)
             include_freshness: Add a per-collection freshness verdict (fresh/stale/
                 unknown) to the envelope, in the same words `index inspect` uses
-            ctx: FastMCP Context (optional, for accessing lifespan state)
+            ctx: FastMCP Context — carries this client's MCP roots (request scope)
 
         Returns:
             dict: LLM-friendly search results with the same structure as search() tool
         """
         search_cfg = _resolve_config(ctx, "search_config", get_search_config)
-        cli_ctx = resolve_cli_context(ctx)
-        collections_path = str(cli_ctx.collections_path)
+        try:
+            scope = await resolve_request_scope(ctx)
+            require_in_scope(scope, collection)
+        except IndexedError as e:
+            return mcp_error_envelope(e)
+        collections_path = str(scope.collections_path)
 
         try:
             statuses = svc_status([collection], collections_path=collections_path)
@@ -207,27 +278,7 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
 
         if not statuses or not statuses[0].indexers:
             return _unresolvable_collection_envelope(collection, collections_path)
-        coll_status = statuses[0]
-        default_indexer = coll_status.indexers[0]
-
-        raw_source_type = coll_status.source_type if coll_status.source_type else None
-        # Whitelist against the SourceConfig Literal; unknown on-disk types fall back
-        # to "localFiles" so a corrupt manifest never raises ValidationError.
-        source_type = (
-            raw_source_type
-            if raw_source_type in _ALLOWED_SOURCE_TYPES
-            else "localFiles"
-        )
-        # source_type is runtime-validated against _ALLOWED_SOURCE_TYPES above
-        # (deliberately derived from SourceConfig's own Literal via get_args()
-        # rather than a hardcoded duplicate list, so this can't drift from the
-        # model) — a static checker can't see through that indirection.
-        source_config = SourceConfig(
-            name=collection,
-            type=source_type,
-            base_url_or_path="",
-            indexer=default_indexer,
-        )
+        source_config = _source_config(collection, statuses[0])
 
         return _run_search(
             query,

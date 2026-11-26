@@ -3,8 +3,13 @@
 Drives the real out-of-process stdio server. With ``[mcp] watch_enabled = true``
 a file written into the collection's source tree becomes searchable through the
 *same* session — no ``index update``, no restart. With the gate off nothing is
-watched, and a collection created while the server runs is only watched after
-the next restart (startup determines the scope).
+watched: an edit is only picked up by the next restart's opening catch-up pass.
+
+The *watched set* is fixed at startup (a collection created while the server
+runs is picked up on the next restart), but request **scope** is not: it is
+resolved per request from the client's MCP roots and the committed
+``indexed.toml``, so editing that definition changes what the same live session
+sees on the next call (#345).
 
 A restart is bounded work too (#358). Every collection that existed at startup
 runs its own opening catch-up pass, so a restart owes two things: the *first*
@@ -23,11 +28,13 @@ import sys
 import time
 from datetime import timedelta
 from pathlib import Path
+from typing import Iterator
 
 import pytest
 from typer.testing import CliRunner
 
 from indexed.cli.app import app
+from indexed.config import reload as reload_config
 from tests.conftest import model_available
 
 runner = CliRunner()
@@ -55,6 +62,23 @@ def _live_embedding_model() -> None:
     if _REQUIRE_LIVE_MODEL:
         pytest.fail(f"{reason} — INDEXED_REQUIRE_LIVE_MODEL=1 forbids the skip")
     pytest.skip(reason)
+
+
+@pytest.fixture
+def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+    """Point global storage (``~/.indexed``) at ``tmp_path/home`` (cf. #112)."""
+    real_hf_home = Path(os.environ["HOME"]) / ".cache" / "huggingface"
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("HF_HOME", str(real_hf_home))
+    monkeypatch.setenv("SENTENCE_TRANSFORMERS_HOME", str(real_hf_home / "hub"))
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    monkeypatch.setenv("TQDM_DISABLE", "1")
+    monkeypatch.setattr(Path, "home", lambda: home)
+    reload_config()
+    yield home
+    reload_config()
 
 
 COLLECTION = "mcp-watch"
@@ -111,6 +135,36 @@ def _texts(payload: dict) -> str:
     return " ".join(hit["text"].lower() for hit in _hits(payload))
 
 
+def _store(home: Path) -> Path:
+    """The global collections directory a definition pins (``~/.indexed/data``)."""
+    return home / ".indexed" / "data" / "collections"
+
+
+def _define(repo: Path, *names: str) -> Path:
+    """Write the workspace definition selecting ``names`` from the global store."""
+    entries = ", ".join(f'"{name}"' for name in names)
+    path = repo / "indexed.toml"
+    path.write_text(
+        f"version = 1\n\n[collections]\nuse = [{entries}]\n", encoding="utf-8"
+    )
+    return path
+
+
+def _roots_callback(*repos: Path):
+    """Advertise ``repos`` as the client's MCP roots (declares the capability)."""
+    from mcp.types import FileUrl, ListRootsResult, Root
+
+    async def callback(_context):
+        return ListRootsResult(
+            roots=[
+                Root(uri=FileUrl(repo.resolve().as_uri()), name=repo.name)
+                for repo in repos
+            ]
+        )
+
+    return callback
+
+
 def _corpus(root: Path, name: str, needle: str) -> Path:
     corpus = root / name
     corpus.mkdir()
@@ -119,9 +173,15 @@ def _corpus(root: Path, name: str, needle: str) -> Path:
     return corpus
 
 
-def _write_config(ws, *, watch_enabled: bool) -> None:
-    """Point the local workspace config at the watcher gate under test."""
-    (ws.local_root / "config.toml").write_text(
+def _write_config(home: Path, *, watch_enabled: bool) -> None:
+    """Point the GLOBAL server config at the watcher gate under test.
+
+    The server starts from the repository (which has no local ``.indexed``), so
+    its config service reads ``$HOME/.indexed/config.toml``.
+    """
+    root = home / ".indexed"
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "config.toml").write_text(
         "[_meta]\n"
         'schema_version = "1"\n'
         "\n[mcp]\n"
@@ -132,7 +192,7 @@ def _write_config(ws, *, watch_enabled: bool) -> None:
 
 
 def _invoke(args: list[str]) -> None:
-    result = runner.invoke(app, ["--local", "--log-level", "ERROR", *args])
+    result = runner.invoke(app, ["--log-level", "ERROR", *args])
     assert result.exit_code == 0, result.stdout + result.stderr
 
 
@@ -147,19 +207,18 @@ def _create(corpus: Path, *, collection: str, engine: str = "v2") -> None:
             collection,
             "--path",
             str(corpus),
-            "--local",
             "--no-cache",
         ]
     )
 
 
-def _server_params(ws):
+def _server_params(repo: Path):
     from mcp import StdioServerParameters
 
     return StdioServerParameters(
         command=sys.executable,
         args=["-m", "indexed.mcp.cli", "run", "--no-banner"],
-        cwd=str(ws.root),
+        cwd=str(repo),
         env={**os.environ, "TQDM_DISABLE": "1"},
     )
 
@@ -214,13 +273,16 @@ async def _immediate_search(
     return _extract_payload(result), time.monotonic() - started
 
 
-async def _freshness(ws, corpus: Path) -> dict:
+async def _freshness(repo: Path, corpus: Path) -> dict:
     from mcp import ClientSession
     from mcp.client.stdio import stdio_client
 
-    async with stdio_client(_server_params(ws)) as (read, write):
+    async with stdio_client(_server_params(repo)) as (read, write):
         async with ClientSession(
-            read, write, read_timeout_seconds=timedelta(seconds=180)
+            read,
+            write,
+            list_roots_callback=_roots_callback(repo),
+            read_timeout_seconds=timedelta(seconds=180),
         ) as session:
             await session.initialize()
             # Let the watcher's opening catch-up pass finish before the edit.
@@ -242,30 +304,42 @@ async def _freshness(ws, corpus: Path) -> dict:
 
 @pytest.mark.parametrize("engine", ["v1", "v2"])
 def test_live_edit_becomes_searchable_without_a_restart(
-    local_workspace, tmp_path: Path, engine: str
+    tmp_path: Path, isolated_home: Path, monkeypatch: pytest.MonkeyPatch, engine: str
 ) -> None:
-    ws = local_workspace
-    _write_config(ws, watch_enabled=True)
+    store = _store(isolated_home)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.chdir(repo)
+    _write_config(isolated_home, watch_enabled=True)
     corpus = _corpus(tmp_path, "corpus", NEEDLE_A)
     _create(corpus, collection=COLLECTION, engine=engine)
+    _define(repo, COLLECTION)
 
-    payload = asyncio.run(_freshness(ws, corpus))
+    payload = asyncio.run(_freshness(repo, corpus))
 
     assert "penguin" in _texts(payload["before"]), payload["before"]
     assert "walrus" in _texts(payload["after"]), (
         "the watched file was never indexed into the served collection: "
         f"{payload['after']!r}"
     )
-    assert (ws.collections_dir / COLLECTION).is_dir()
+    assert (store / COLLECTION).is_dir()
 
 
-async def _gated_sessions(ws, corpus_a: Path, corpus_late: Path) -> dict:
+async def _listing(session) -> list[str]:
+    result = await session.read_resource("resource://collections")
+    return json.loads(result.contents[0].text)["collections"]
+
+
+async def _gated_sessions(repo: Path, corpus_a: Path, corpus_late: Path) -> dict:
     from mcp import ClientSession
     from mcp.client.stdio import stdio_client
 
-    async with stdio_client(_server_params(ws)) as (read, write):
+    async with stdio_client(_server_params(repo)) as (read, write):
         async with ClientSession(
-            read, write, read_timeout_seconds=timedelta(seconds=180)
+            read,
+            write,
+            list_roots_callback=_roots_callback(repo),
+            read_timeout_seconds=timedelta(seconds=180),
         ) as session:
             await session.initialize()
             await asyncio.sleep(3.0)
@@ -276,8 +350,12 @@ async def _gated_sessions(ws, corpus_a: Path, corpus_late: Path) -> dict:
                 f"The volcanic sulfur survey found deposits near the caldera rim. "
                 f"Also: {NEEDLE_B}.\n"
             )
-            # A collection created after startup is outside this server's scope.
+            # A collection created after startup is outside the *watched* set.
             await asyncio.to_thread(_create, corpus_late, collection=COLLECTION_LATE)
+            # Scope, however, is resolved per request: publishing it in the
+            # definition is enough for this same live session to see it.
+            _define(repo, COLLECTION, COLLECTION_LATE)
+            late_listing = await _listing(session)
             (corpus_late / "delta.txt").write_text(
                 f"# Late edit\n\n{NEEDLE_LATE_EDIT}\n"
             )
@@ -290,11 +368,14 @@ async def _gated_sessions(ws, corpus_a: Path, corpus_late: Path) -> dict:
             )
 
     # Restart with the gate on: the opening catch-up pass covers it all.
-    _write_config(ws, watch_enabled=True)
+    _write_config(Path(os.environ["HOME"]), watch_enabled=True)
     restarted_at = time.monotonic()
-    async with stdio_client(_server_params(ws)) as (read, write):
+    async with stdio_client(_server_params(repo)) as (read, write):
         async with ClientSession(
-            read, write, read_timeout_seconds=timedelta(seconds=180)
+            read,
+            write,
+            list_roots_callback=_roots_callback(repo),
+            read_timeout_seconds=timedelta(seconds=180),
         ) as session:
             await session.initialize()
             caught_up, caught_up_s = await _wait_for_text(
@@ -312,6 +393,7 @@ async def _gated_sessions(ws, corpus_a: Path, corpus_late: Path) -> dict:
     )
     return {
         "before": before,
+        "late_listing": late_listing,
         "quiet": quiet,
         "late_quiet": late_quiet,
         "caught_up": caught_up,
@@ -321,24 +403,30 @@ async def _gated_sessions(ws, corpus_a: Path, corpus_late: Path) -> dict:
     }
 
 
-def test_gate_off_watches_nothing_and_scope_is_fixed_at_startup(
-    local_workspace, tmp_path: Path
+def test_gate_off_watches_nothing_and_scope_is_resolved_per_request(
+    tmp_path: Path, isolated_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    ws = local_workspace
-    _write_config(ws, watch_enabled=False)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.chdir(repo)
+    _write_config(isolated_home, watch_enabled=False)
     corpus_a = _corpus(tmp_path, "corpus-a", NEEDLE_A)
     corpus_late = _corpus(tmp_path, "corpus-late", NEEDLE_LATE)
     _create(corpus_a, collection=COLLECTION)
+    _define(repo, COLLECTION)
 
-    payload = asyncio.run(_gated_sessions(ws, corpus_a, corpus_late))
+    payload = asyncio.run(_gated_sessions(repo, corpus_a, corpus_late))
 
     assert "penguin" in _texts(payload["before"]), payload["before"]
     assert "walrus" not in _texts(payload["quiet"]), (
         f"watch_enabled=false must not add a watcher: {payload['quiet']!r}"
     )
+    # The gate governs watching, not scope: the same live session resolves the
+    # edited definition on its next request.
+    assert payload["late_listing"] == [COLLECTION, COLLECTION_LATE], payload
     assert "orca" not in _texts(payload["late_quiet"]), (
-        "a collection created after startup must not be watched until restart: "
-        f"{payload['late_quiet']!r}"
+        "the gate is off, so the late collection's edit must not be indexed "
+        f"without a restart: {payload['late_quiet']!r}"
     )
     # The restart's catch-up pass (not a live watcher) makes both fresh — and it
     # is held to the same bound as the gate-on restart (#358).
@@ -346,7 +434,7 @@ def test_gate_off_watches_nothing_and_scope_is_fixed_at_startup(
     assert "orca" in _texts(payload["late_caught_up"]), payload["late_caught_up"]
 
 
-async def _restart_and_measure(ws, edited: list[tuple[str, str, str]]) -> dict:
+async def _restart_and_measure(repo: Path, edited: list[tuple[str, str, str]]) -> dict:
     """Restart the server and measure the catch-up it owes (#358).
 
     ``edited`` is ``(collection, original_needle, edit_needle)`` for every
@@ -358,9 +446,12 @@ async def _restart_and_measure(ws, edited: list[tuple[str, str, str]]) -> dict:
     from mcp.client.stdio import stdio_client
 
     restarted_at = time.monotonic()
-    async with stdio_client(_server_params(ws)) as (read, write):
+    async with stdio_client(_server_params(repo)) as (read, write):
         async with ClientSession(
-            read, write, read_timeout_seconds=timedelta(seconds=180)
+            read,
+            write,
+            list_roots_callback=_roots_callback(repo),
+            read_timeout_seconds=timedelta(seconds=180),
         ) as session:
             await session.initialize()
             # Acceptance #358, first half: this must answer, full stop.
@@ -396,7 +487,7 @@ RESTART_CORPORA = (
 
 @pytest.mark.parametrize("count", [1, 2], ids=["single-collection", "two-collections"])
 def test_restart_serves_immediately_and_catches_up_every_edited_v2_collection(
-    local_workspace, tmp_path: Path, count: int
+    tmp_path: Path, isolated_home: Path, monkeypatch: pytest.MonkeyPatch, count: int
 ) -> None:
     """#358: a restart over v2 collections answers, then catches every edit up.
 
@@ -405,19 +496,24 @@ def test_restart_serves_immediately_and_catches_up_every_edited_v2_collection(
     keep passing so a fix cannot buy multi-collection catch-up by breaking the
     case that always worked.
     """
-    ws = local_workspace
-    _write_config(ws, watch_enabled=True)
+    store = _store(isolated_home)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.chdir(repo)
+    _write_config(isolated_home, watch_enabled=True)
     edited = RESTART_CORPORA[:count]
     for collection, original, _edit in edited:
         corpus = _corpus(tmp_path, collection, original)
         _create(corpus, collection=collection, engine="v2")
+    # One request scope selects every collection this restart has to catch up.
+    _define(repo, *(collection for collection, _original, _edit in edited))
 
     # The edits land while the server is down: this measures the opening
     # catch-up pass, not the live watcher.
     for collection, _original, edit in edited:
         (tmp_path / collection / "delta.txt").write_text(f"# Late edit\n\n{edit}\n")
 
-    measured = asyncio.run(_restart_and_measure(ws, list(edited)))
+    measured = asyncio.run(_restart_and_measure(repo, list(edited)))
 
     assert edited[0][1].split()[0] in _texts(measured["immediate"]), (
         "the first search after a restart must answer with the collection's "
@@ -433,7 +529,7 @@ def test_restart_serves_immediately_and_catches_up_every_edited_v2_collection(
             f"the {_catch_up_bound():.1f}s bound (#358 is a catch-up that never "
             "finishes — widening this bound hides it again)"
         )
-        assert (ws.collections_dir / collection).is_dir()
+        assert (store / collection).is_dir()
 
 
 def test_accompanying_guards_are_collected(request) -> None:
@@ -446,7 +542,7 @@ def test_accompanying_guards_are_collected(request) -> None:
     """
     collected = {item.originalname for item in request.session.items}
     required = {
-        "test_gate_off_watches_nothing_and_scope_is_fixed_at_startup",
+        "test_gate_off_watches_nothing_and_scope_is_resolved_per_request",
         "test_live_edit_becomes_searchable_without_a_restart",
         "test_restart_serves_immediately_and_catches_up_every_edited_v2_collection",
     }

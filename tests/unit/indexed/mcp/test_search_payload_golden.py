@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -150,8 +151,17 @@ def _mcp_search_tool():
     return asyncio.run(server_module.mcp.get_tool("search"))
 
 
+def run_async(coro_or_result):
+    """Run coroutine synchronously or return result directly if not a coroutine."""
+    if asyncio.iscoroutine(coro_or_result):
+        return asyncio.run(coro_or_result)
+    return coro_or_result
+
+
 @pytest.mark.parametrize("include_matched_chunks", [True, False])
-def test_mcp_search_tool_returns_the_golden_payload(include_matched_chunks) -> None:
+def test_mcp_search_tool_returns_the_golden_payload(
+    include_matched_chunks, scoped: Any, mcp_status: Any
+) -> None:
     search_cfg = MagicMock()
     search_cfg.max_docs = 10
     search_cfg.max_chunks = 30
@@ -171,9 +181,17 @@ def test_mcp_search_tool_returns_the_golden_payload(include_matched_chunks) -> N
 
     with (
         patch.object(tools_module, "svc_search", side_effect=search_service),
+        patch.object(
+            tools_module,
+            "svc_status",
+            return_value=[mcp_status("indexed-src"), mcp_status("notes-v2")],
+        ),
         patch.object(server_module, "_get_config", return_value=search_cfg),
     ):
-        payload = _mcp_search_tool().fn(QUERY)
+        # The golden payload's two collections are the request's selection, so
+        # the tool searches exactly them from the roots' definition (#345).
+        ctx = scoped("indexed-src", "notes-v2")
+        payload = run_async(_mcp_search_tool().fn(QUERY, ctx=ctx))
 
     assert payload == _golden()
 
@@ -299,7 +317,9 @@ def test_cli_json_empty_store_reports_an_error_body_but_exits_zero(monkeypatch) 
     assert payload == {"error": "No collections found"}
 
 
-def test_mcp_search_failure_is_an_error_envelope_with_a_type() -> None:
+def test_mcp_search_failure_is_an_error_envelope_with_a_type(
+    scoped: Any, mcp_status: Any
+) -> None:
     from indexed.cli.errors import MCPError
 
     search_cfg = MagicMock()
@@ -314,9 +334,10 @@ def test_mcp_search_failure_is_an_error_envelope_with_a_type() -> None:
         patch.object(
             tools_module, "svc_search", side_effect=MCPError("collection exploded")
         ),
+        patch.object(tools_module, "svc_status", return_value=[mcp_status("col")]),
         patch.object(server_module, "_get_config", return_value=search_cfg),
     ):
-        payload = _mcp_search_tool().fn(QUERY)
+        payload = run_async(_mcp_search_tool().fn(QUERY, ctx=scoped("col")))
 
     assert list(payload) == ["error", "type"]
     assert payload == {"error": "collection exploded", "type": "MCPError"}
@@ -333,16 +354,19 @@ def _search_config() -> MagicMock:
     return search_cfg
 
 
-def test_mcp_empty_store_is_the_success_shape_with_no_collections() -> None:
+def test_mcp_empty_store_is_the_success_shape_with_no_collections(
+    scoped: Any, mcp_status: Any
+) -> None:
     """An empty store is NOT an error envelope on MCP (the CLI reports one): the
     tool returns the success payload with `collections: []`, which is how a
     consumer tells "nothing was searched" from "searched, nothing matched"
     (docs/spec/tech/app/app-search-result-bodies.md)."""
     with (
         patch.object(tools_module, "svc_search", return_value={}),
+        patch.object(tools_module, "svc_status", return_value=[mcp_status("col")]),
         patch.object(server_module, "_get_config", return_value=_search_config()),
     ):
-        payload = _mcp_search_tool().fn(QUERY)
+        payload = run_async(_mcp_search_tool().fn(QUERY, ctx=scoped("col")))
 
     assert payload == {
         "schema": "indexed.search/1",
@@ -354,7 +378,9 @@ def test_mcp_empty_store_is_the_success_shape_with_no_collections() -> None:
     }
 
 
-def test_mcp_search_collection_unknown_is_a_bare_error_body() -> None:
+def test_mcp_search_collection_unknown_is_a_bare_error_body(
+    scoped: Any,
+) -> None:
     """`search_collection` answers an unknown name with `{"error"}` and no `type`
     — the other MCP failure body. Pinned so the documented asymmetry cannot drift
     back into a single lookalike envelope (collection_errors.py)."""
@@ -367,6 +393,8 @@ def test_mcp_search_collection_unknown_is_a_bare_error_body() -> None:
         ),
         patch.object(server_module, "_get_config", return_value=_search_config()),
     ):
-        payload = tool.fn("ghost", QUERY)
+        # ``ghost`` is in the request's selection, so the answer is the store's
+        # (unknown name), not the scope refusing it (#345).
+        payload = run_async(tool.fn("ghost", QUERY, ctx=scoped("ghost")))
 
     assert payload == {"error": "Collection 'ghost' not found or has no indexers"}

@@ -55,10 +55,11 @@ repository search the same collections without any per-clone setup.
   are deliberately out of this slice: they must interact with `ConfigService`'s
   precedence chain, which is a separate, riskier change. The format reserves room
   (`version` gate) so adding a section later is not a breaking edit.
-- **Per-request MCP scope.** A running MCP server still resolves one workspace
-  from its process CWD; telling it which workspace each request belongs to is
-  [#345](https://github.com/LennardZuendorf/indexed/issues/345). The resolved
-  scope object this feature puts on `CliContext` is what #345 will read.
+- **Per-request MCP scope.** A running MCP server still resolved one workspace
+  from its process CWD in this feature; which workspace each request belongs to
+  is [#345](https://github.com/LennardZuendorf/indexed/issues/345), shipped as
+  [mcp-request-scope](../mcp-request-scope/product.md), which reads the
+  `CliContext.selection` this feature puts in place.
 - **A command editing the definition.** `index create` never rewrites
   `indexed.toml`: a committed file is the repository's, not a command's. The
   collection lands in the global store and the command warns that it is outside

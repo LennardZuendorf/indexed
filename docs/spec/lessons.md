@@ -2532,3 +2532,33 @@ outputs, never a prefix — and the reference states the normalisation rule (her
 offset is `Z`, exactly as `%cI`) instead of leaving it to whichever library runs last.
 **Tags:** git, contract, testing
 **Date:** 2026-11-26
+
+### Process state is not a scope (2026-11-26)
+**Pattern:** one `indexed mcp run` process served many clients, but it resolved its
+workspace once at startup from its own CWD, so whichever client configured the server
+last decided what every client searched. The CLI and the LSP had the right rule all along
+(`indexed.toml` at the worktree root) — only the *shared* surface had cached the answer.
+The fix is per request: MCP roots → nearest `indexed.toml` → that selection, no cache, and
+a typed error (`NoRequestScopeError`, `AmbiguousRequestScopeError`) when the request
+cannot be placed.
+**Rule:** in a process that serves more than one client, request identity must travel
+with the request (MCP roots, a header, a session id) and everything derived from it —
+scope, store, credentials — is recomputed per request, never captured at startup. A
+surface that cannot be told who the caller is fails closed with a typed error instead of
+falling back to "everything"; and it may be stricter than the single-user CLI, provided it
+documents the divergence instead of sharing the lenient code path.
+**Tags:** mcp, config, concurrency, security
+**Date:** 2026-11-26
+
+### `ctx` is not an argument in FastMCP (2026-11-26)
+**Pattern:** a resource declared `def r(name: str, ctx: Optional[Context] = None)` is
+registered with the signature `(name)` — FastMCP resolves `ctx` from its own context
+variable. A test that calls `resource.fn(..., ctx=ctx)` gets a pydantic "unexpected
+keyword argument", and `mcp.read_resource()` inside a test installs a fresh context, so a
+fake client bound to the context variable is not the one the resource sees.
+**Rule:** test a FastMCP resource by binding the fake context to
+`fastmcp.server.context._current_context` (carrying the attributes the dependency wrapper
+touches) and calling the resource's own function without `ctx`; assert what the server
+would compute, not what `read_resource` returns.
+**Tags:** mcp, testing
+**Date:** 2026-11-26

@@ -110,6 +110,10 @@ there is no fallback to an unfiltered store and no fallback to an empty result.
 - `KnowledgeBackend` (`indexed.lsp`) takes `selected_names` and filters
   `statuses()`, so `workspace/symbol`, hover and diagnostics see the same scope
   as the CLI.
+- The MCP server resolves the definition **per request** from the client's
+  declared roots — see [mcp-request-scope](../mcp-request-scope/tech.md). It uses
+  this feature's discovery and resolver unchanged; it differs only in failing
+  closed when a request presents no definition.
 - `indexed storage migrate` writes the definition at the worktree root instead
   of the pointer, and `--rollback` removes the entry it added (deleting the file
   when that entry was the only one).

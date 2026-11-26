@@ -9,7 +9,7 @@ findings 2 and 3).
 from __future__ import annotations
 
 import asyncio
-from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import indexed.mcp.tools as tools_module
@@ -21,11 +21,11 @@ def _get_tool(name: str):
     return asyncio.run(mcp.get_tool(name))
 
 
-def _ctx() -> MagicMock:
-    """Minimal lifespan state: a global collections path, no stored configs."""
-    ctx = MagicMock()
-    ctx.lifespan_context = {"cli_context": SimpleNamespace(collections_path="/cols")}
-    return ctx
+def run_async(coro_or_result):
+    """Run coroutine synchronously or return result directly if not a coroutine."""
+    if asyncio.iscoroutine(coro_or_result):
+        return asyncio.run(coro_or_result)
+    return coro_or_result
 
 
 def _cfg(**overrides) -> CoreV1SearchConfig:
@@ -33,101 +33,153 @@ def _cfg(**overrides) -> CoreV1SearchConfig:
 
 
 class TestSearchToolGitOptions:
+    @patch.object(tools_module, "svc_status")
     @patch.object(tools_module, "svc_search")
     @patch.object(tools_module, "_resolve_config")
     def test_both_options_reach_svc_search(
-        self, mock_resolve_config: MagicMock, mock_search: MagicMock
+        self,
+        mock_resolve_config: MagicMock,
+        mock_search: MagicMock,
+        mock_status: MagicMock,
+        scoped: Any,
+        mcp_status: Any,
     ) -> None:
         mock_resolve_config.return_value = _cfg()
+        mock_status.return_value = [mcp_status("col")]
         mock_search.return_value = {}
 
-        _get_tool("search").fn(
-            "q", changed_since="HEAD~1", git_provenance=True, ctx=_ctx()
+        run_async(
+            _get_tool("search").fn(
+                "q", changed_since="HEAD~1", git_provenance=True, ctx=scoped("col")
+            )
         )
 
         kwargs = mock_search.call_args.kwargs
         assert kwargs["changed_since"] == "HEAD~1"
         assert kwargs["git_provenance"] is True
 
+    @patch.object(tools_module, "svc_status")
     @patch.object(tools_module, "svc_search")
     @patch.object(tools_module, "_resolve_config")
     def test_omitted_options_forward_nothing(
-        self, mock_resolve_config: MagicMock, mock_search: MagicMock
+        self,
+        mock_resolve_config: MagicMock,
+        mock_search: MagicMock,
+        mock_status: MagicMock,
+        scoped: Any,
+        mcp_status: Any,
     ) -> None:
         mock_resolve_config.return_value = _cfg()
+        mock_status.return_value = [mcp_status("col")]
         mock_search.return_value = {}
 
-        _get_tool("search").fn("q", ctx=_ctx())
+        run_async(_get_tool("search").fn("q", ctx=scoped("col")))
 
         kwargs = mock_search.call_args.kwargs
         assert "changed_since" not in kwargs
         assert "git_provenance" not in kwargs
 
+    @patch.object(tools_module, "svc_status")
     @patch.object(tools_module, "svc_search")
     @patch.object(tools_module, "_resolve_config")
     def test_configured_default_applies_when_flag_omitted(
-        self, mock_resolve_config: MagicMock, mock_search: MagicMock
+        self,
+        mock_resolve_config: MagicMock,
+        mock_search: MagicMock,
+        mock_status: MagicMock,
+        scoped: Any,
+        mcp_status: Any,
     ) -> None:
         """``core.v1.search.git_provenance`` must work on MCP, not just the CLI."""
         mock_resolve_config.return_value = _cfg(git_provenance=True)
+        mock_status.return_value = [mcp_status("col")]
         mock_search.return_value = {}
 
-        _get_tool("search").fn("q", ctx=_ctx())
+        run_async(_get_tool("search").fn("q", ctx=scoped("col")))
 
         assert mock_search.call_args.kwargs["git_provenance"] is True
 
+    @patch.object(tools_module, "svc_status")
     @patch.object(tools_module, "svc_search")
     @patch.object(tools_module, "_resolve_config")
     def test_explicit_false_beats_the_configured_default(
-        self, mock_resolve_config: MagicMock, mock_search: MagicMock
+        self,
+        mock_resolve_config: MagicMock,
+        mock_search: MagicMock,
+        mock_status: MagicMock,
+        scoped: Any,
+        mcp_status: Any,
     ) -> None:
         mock_resolve_config.return_value = _cfg(git_provenance=True)
+        mock_status.return_value = [mcp_status("col")]
         mock_search.return_value = {}
 
-        _get_tool("search").fn("q", git_provenance=False, ctx=_ctx())
+        run_async(_get_tool("search").fn("q", git_provenance=False, ctx=scoped("col")))
 
         assert mock_search.call_args.kwargs["git_provenance"] is False
 
+    @patch.object(tools_module, "svc_status")
     @patch.object(tools_module, "svc_search")
     @patch.object(tools_module, "_resolve_config")
     def test_line_blame_reaches_svc_search(
-        self, mock_resolve_config: MagicMock, mock_search: MagicMock
+        self,
+        mock_resolve_config: MagicMock,
+        mock_search: MagicMock,
+        mock_status: MagicMock,
+        scoped: Any,
+        mcp_status: Any,
     ) -> None:
         mock_resolve_config.return_value = _cfg()
+        mock_status.return_value = [mcp_status("col")]
         mock_search.return_value = {}
 
-        _get_tool("search").fn("q", git_line_blame=True, ctx=_ctx())
+        run_async(_get_tool("search").fn("q", git_line_blame=True, ctx=scoped("col")))
 
         assert mock_search.call_args.kwargs["git_line_blame"] is True
 
+    @patch.object(tools_module, "svc_status")
     @patch.object(tools_module, "svc_search")
     @patch.object(tools_module, "_resolve_config")
     def test_line_blame_configured_default_applies(
-        self, mock_resolve_config: MagicMock, mock_search: MagicMock
+        self,
+        mock_resolve_config: MagicMock,
+        mock_search: MagicMock,
+        mock_status: MagicMock,
+        scoped: Any,
+        mcp_status: Any,
     ) -> None:
         mock_resolve_config.return_value = _cfg(git_line_blame=True)
+        mock_status.return_value = [mcp_status("col")]
         mock_search.return_value = {}
 
-        _get_tool("search").fn("q", ctx=_ctx())
+        run_async(_get_tool("search").fn("q", ctx=scoped("col")))
 
         assert mock_search.call_args.kwargs["git_line_blame"] is True
 
+    @patch.object(tools_module, "svc_status")
     @patch.object(tools_module, "svc_search")
     @patch.object(tools_module, "_resolve_config")
     def test_line_blame_explicit_false_beats_the_default(
-        self, mock_resolve_config: MagicMock, mock_search: MagicMock
+        self,
+        mock_resolve_config: MagicMock,
+        mock_search: MagicMock,
+        mock_status: MagicMock,
+        scoped: Any,
+        mcp_status: Any,
     ) -> None:
         mock_resolve_config.return_value = _cfg(git_line_blame=True)
+        mock_status.return_value = [mcp_status("col")]
         mock_search.return_value = {}
 
-        _get_tool("search").fn("q", git_line_blame=False, ctx=_ctx())
+        run_async(_get_tool("search").fn("q", git_line_blame=False, ctx=scoped("col")))
 
         assert mock_search.call_args.kwargs["git_line_blame"] is False
 
 
 class TestSearchCollectionToolGitOptions:
-    def _status(self, indexers: list[str], source_type: str) -> MagicMock:
+    def _status(self, name: str, indexers: list[str], source_type: str) -> MagicMock:
         status = MagicMock()
+        status.name = name
         status.indexers = indexers
         status.source_type = source_type
         return status
@@ -140,18 +192,21 @@ class TestSearchCollectionToolGitOptions:
         mock_resolve_config: MagicMock,
         mock_search: MagicMock,
         mock_status: MagicMock,
+        scoped: Any,
     ) -> None:
         mock_resolve_config.return_value = _cfg()
-        mock_status.return_value = [self._status(["default"], "localFiles")]
+        mock_status.return_value = [self._status("col", ["default"], "localFiles")]
         mock_search.return_value = {}
 
-        _get_tool("search_collection").fn(
-            "col",
-            "q",
-            changed_since="HEAD",
-            git_provenance=True,
-            git_line_blame=True,
-            ctx=_ctx(),
+        run_async(
+            _get_tool("search_collection").fn(
+                "col",
+                "q",
+                changed_since="HEAD",
+                git_provenance=True,
+                git_line_blame=True,
+                ctx=scoped("col"),
+            )
         )
 
         kwargs = mock_search.call_args.kwargs
@@ -167,12 +222,13 @@ class TestSearchCollectionToolGitOptions:
         mock_resolve_config: MagicMock,
         mock_search: MagicMock,
         mock_status: MagicMock,
+        scoped: Any,
     ) -> None:
         mock_resolve_config.return_value = _cfg()
-        mock_status.return_value = [self._status(["default"], "localFiles")]
+        mock_status.return_value = [self._status("col", ["default"], "localFiles")]
         mock_search.return_value = {}
 
-        _get_tool("search_collection").fn("col", "q", ctx=_ctx())
+        run_async(_get_tool("search_collection").fn("col", "q", ctx=scoped("col")))
 
         kwargs = mock_search.call_args.kwargs
         assert "changed_since" not in kwargs
@@ -188,17 +244,22 @@ class TestSearchCollectionToolGitOptions:
         mock_resolve_config: MagicMock,
         mock_search: MagicMock,
         mock_status: MagicMock,
+        scoped: Any,
     ) -> None:
         """The #146 advisory is opt-in and must reach the facade (both tools)."""
         mock_resolve_config.return_value = _cfg()
-        mock_status.return_value = [self._status(["default"], "localFiles")]
+        mock_status.return_value = [self._status("col", ["default"], "localFiles")]
         mock_search.return_value = {}
 
-        _get_tool("search").fn("q", include_freshness=True, ctx=_ctx())
+        run_async(
+            _get_tool("search").fn("q", include_freshness=True, ctx=scoped("col"))
+        )
         assert mock_search.call_args.kwargs["include_freshness"] is True
 
-        _get_tool("search_collection").fn(
-            "col", "q", include_freshness=True, ctx=_ctx()
+        run_async(
+            _get_tool("search_collection").fn(
+                "col", "q", include_freshness=True, ctx=scoped("col")
+            )
         )
         assert mock_search.call_args.kwargs["include_freshness"] is True
 
@@ -210,12 +271,13 @@ class TestSearchCollectionToolGitOptions:
         mock_resolve_config: MagicMock,
         mock_search: MagicMock,
         mock_status: MagicMock,
+        scoped: Any,
     ) -> None:
         mock_resolve_config.return_value = _cfg(git_provenance=True)
-        mock_status.return_value = [self._status(["default"], "localFiles")]
+        mock_status.return_value = [self._status("col", ["default"], "localFiles")]
         mock_search.return_value = {}
 
-        _get_tool("search_collection").fn("col", "q", ctx=_ctx())
+        run_async(_get_tool("search_collection").fn("col", "q", ctx=scoped("col")))
 
         assert mock_search.call_args.kwargs["git_provenance"] is True
 
@@ -223,36 +285,55 @@ class TestSearchCollectionToolGitOptions:
 class TestSearchToolRerankOption:
     """``git_rerank`` must reach the engine from MCP and honour the config default."""
 
+    @patch.object(tools_module, "svc_status")
     @patch.object(tools_module, "svc_search")
     @patch.object(tools_module, "_resolve_config")
     def test_explicit_flag_reaches_svc_search(
-        self, mock_resolve_config: MagicMock, mock_search: MagicMock
+        self,
+        mock_resolve_config: MagicMock,
+        mock_search: MagicMock,
+        mock_status: MagicMock,
+        scoped: Any,
+        mcp_status: Any,
     ) -> None:
         mock_resolve_config.return_value = _cfg()
+        mock_status.return_value = [mcp_status("col")]
         mock_search.return_value = {}
 
-        _get_tool("search").fn("q", git_rerank=True, ctx=_ctx())
+        run_async(_get_tool("search").fn("q", git_rerank=True, ctx=scoped("col")))
 
         assert mock_search.call_args.kwargs["git_rerank"] is True
 
+    @patch.object(tools_module, "svc_status")
     @patch.object(tools_module, "svc_search")
     @patch.object(tools_module, "_resolve_config")
     def test_config_default_enables_it_and_explicit_false_wins(
-        self, mock_resolve_config: MagicMock, mock_search: MagicMock
+        self,
+        mock_resolve_config: MagicMock,
+        mock_search: MagicMock,
+        mock_status: MagicMock,
+        scoped: Any,
+        mcp_status: Any,
     ) -> None:
         mock_search.return_value = {}
         mock_resolve_config.return_value = _cfg(git_rerank=True)
+        mock_status.return_value = [mcp_status("col")]
 
-        _get_tool("search").fn("q", ctx=_ctx())
+        run_async(_get_tool("search").fn("q", ctx=scoped("col")))
         assert mock_search.call_args.kwargs["git_rerank"] is True
 
-        _get_tool("search").fn("q", git_rerank=False, ctx=_ctx())
+        run_async(_get_tool("search").fn("q", git_rerank=False, ctx=scoped("col")))
         assert mock_search.call_args.kwargs["git_rerank"] is False
 
+    @patch.object(tools_module, "svc_status")
     @patch.object(tools_module, "svc_search")
     @patch.object(tools_module, "_resolve_config")
     def test_collection_tool_forwards_it_too(
-        self, mock_resolve_config: MagicMock, mock_search: MagicMock
+        self,
+        mock_resolve_config: MagicMock,
+        mock_search: MagicMock,
+        mock_status: MagicMock,
+        scoped: Any,
     ) -> None:
         mock_resolve_config.return_value = _cfg()
         mock_search.return_value = {}
@@ -261,7 +342,11 @@ class TestSearchToolRerankOption:
         status.indexers = ["default"]
         status.source_type = "localFiles"
 
-        with patch.object(tools_module, "svc_status", return_value=[status]):
-            _get_tool("search_collection").fn("col1", "q", git_rerank=True, ctx=_ctx())
+        mock_status.return_value = [status]
+        run_async(
+            _get_tool("search_collection").fn(
+                "col1", "q", git_rerank=True, ctx=scoped("col1")
+            )
+        )
 
         assert mock_search.call_args.kwargs["git_rerank"] is True
