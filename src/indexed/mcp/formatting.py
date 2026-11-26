@@ -304,22 +304,20 @@ def _build_sources(
         # say so, and either is enough: the manifest counts zero documents, or
         # the index the engine just opened holds zero vectors (a partially
         # rebuilt collection still claims documents it can no longer match).
-        index_size = data.get("indexSize") if isinstance(data, dict) else None
-        if status == "ok" and index_size == 0:
+        if status == "ok" and _indexes_nothing(data, documents):
             status = "empty"
             documents = 0
-        elif status == "ok" and documents == 0:
-            status = "empty"
 
-        state: SourceState = {"collection": name, "status": status}
+        state: Dict[str, Any] = {"collection": name}
         source_type = declaration.get("source_type") or (
             data.get("sourceType") if isinstance(data, dict) else None
         )
         if source_type:
             state["source_type"] = str(source_type)
+        state["status"] = status
         if isinstance(documents, int):
             state["documents"] = documents
-        if name in collections:
+        if status == "ok" and name in collections:
             state["hits"] = hits_per_collection.get(name, 0)
         if status != "ok":
             engine_error = data.get("error") if isinstance(data, dict) else None
@@ -328,7 +326,7 @@ def _build_sources(
                 or engine_error
                 or f"Collection '{name}' {_STATUS_DEFAULT_ERROR[status]}"
             )
-        states.append(state)
+        states.append(cast(SourceState, state))
 
     for name, data in raw_results.items():
         if name in seen:
@@ -353,19 +351,37 @@ def _build_sources(
             continue
         hits = hits_per_collection.get(name, 0)
         source_type = data.get("sourceType")
-        answered: SourceState
+        # The same R3 verdict applies with no declaration to carry a document
+        # count: the opened index is the only witness. `indexSize == 0` means
+        # nothing could have matched, so an `ok` with zero hits would be the
+        # silent failure #340 exists to prevent (CLI `--collection`, and any
+        # caller that hands the engine a scope without declaring it).
+        status: SourceStatus = "empty" if _indexes_nothing(data, None) else "ok"
+        answered: Dict[str, Any] = {"collection": name}
         if source_type:
-            answered = {
-                "collection": name,
-                "source_type": str(source_type),
-                "status": "ok",
-                "hits": hits,
-            }
+            answered["source_type"] = str(source_type)
+        answered["status"] = status
+        if status == "empty":
+            answered["documents"] = 0
+        if status == "ok":
+            answered["hits"] = hits
         else:
-            answered = {"collection": name, "status": "ok", "hits": hits}
-        states.append(answered)
+            answered["error"] = f"Collection '{name}' {_STATUS_DEFAULT_ERROR[status]}"
+        states.append(cast(SourceState, answered))
 
     return states
+
+
+def _indexes_nothing(data: Any, documents: Optional[int]) -> bool:
+    """Whether a source can match nothing: its index is empty or its count is 0.
+
+    ``indexSize`` comes from the index the engine actually opened, so it beats a
+    manifest that still claims documents; ``documents`` is the caller's declared
+    count when there is one. Either witness is enough (#340 R3).
+    """
+    if isinstance(data, dict) and data.get("indexSize") == 0:
+        return True
+    return documents == 0
 
 
 def _finalize_document(doc: Dict[str, Any]) -> Dict[str, Any]:

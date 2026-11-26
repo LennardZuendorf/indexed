@@ -159,7 +159,7 @@ re-rank and freshness are all off by default, so none of them appears in it.
 | `counts.hits` | int | Total hits across all documents. |
 | `collections` | string[] | Collections that were **searched and answered**. Empty means nothing was searched or nothing answered, which is not the same as "searched and nothing matched". A source whose `sources.status` is not `ok` (`empty`, `missing`, `unusable`, `failed`) is **not** listed here — it answered nothing, and `sources` says why. A collection whose *requested option* was skipped is still listed here, because it was searched and its documents are in the payload; it then also appears in `collection_errors`. |
 | `collection_errors` | object[] | Always present, `[]` when every request was carried out as asked. Each entry is `{"collection": "<name>", "error": "<message>"}` and means **something was not done as asked** — which is not the same as "this collection failed". Read `collections` to tell the two states apart: a collection that **failed** is absent from `collections` and contributes no documents; a collection whose requested Git option was **skipped** is in `collections` with its documents present, just unfiltered/unranked (see [Requests that were not carried out](#requests-that-were-not-carried-out)). Entries are per request-not-applied, so one collection can have more than one. CLI collections with readable status but no indexers also appear here when other collections are searched. The CLI resolves `collections` through status, so a collection with an unreadable manifest is omitted from both arrays. MCP `search` enumerates every collection directory, so a collection it cannot search is reported here; `search_collection` checks status first and returns a top-level error for a present but unusable named collection (see Failures). |
-| `sources` | object[] | One entry per collection the request meant to search — the `indexed.toml` selection's scope, or the single name given to `--collection` — in that order. It is always present and always a superset of `collections`. Each entry is `{collection, source_type?, status, documents?, hits?, error?}`; `status` is `ok`, `empty`, `missing`, `unusable` or `failed`, and every non-`ok` entry carries an `error` naming the source and the remedy, mirrored into `collection_errors`. This is how "three sources were meant to answer, one did not" becomes visible; before it, a dead source was indistinguishable from a corpus that never had it. See [`sources[]`](#sources-did-every-source-answer). |
+| `sources` | object[] | One entry per collection the request meant to search — the `indexed.toml` selection's scope, or the single name given to `--collection` — in that order. It is always present and always a superset of `collections`. Each entry is `{collection, source_type?, status, documents?, hits?, error?}` — `hits` only on `ok`, `error` on every non-`ok` entry, naming the source and the remedy and mirrored into `collection_errors`. `status` is `ok`, `empty`, `missing`, `unusable` or `failed`, and the verdict does not depend on a workspace selection: an undeclared collection whose opened index holds no vectors is `empty` too. This is how "three sources were meant to answer, one did not" becomes visible; before it, a dead source was indistinguishable from a corpus that never had it. See [`sources[]`](#sources-did-every-source-answer). |
 | `documents` | object[] | Matched documents, best first. A document's position reflects its **best** hit; full-precision ties keep discovery order. Ranking happens before output scores are rounded. |
 | `freshness` | object[], optional | One verdict per successfully searched collection, present **only** when freshness was requested (`include_freshness` / `--freshness`). Omitted — not `[]` — otherwise. See [`freshness[]`](#freshness). |
 
@@ -179,9 +179,13 @@ appended as `ok`).
 | `unusable` | In the store but has no usable index (no indexers, unreadable manifest). | present |
 | `failed` | The engine raised while searching it. The other sources still answer. | present, carrying the engine's message |
 
-A non-`ok` source is never in `collections`, always contributes a matching
+A non-`ok` source is never in `collections`, never states `hits` (it answered
+nothing, so there is no count to report), always contributes a matching
 `collection_errors` entry with the same wording, and does not stop the other
-sources from answering. A search whose workspace selection names a vanished
+sources from answering. The same verdict applies whether or not the source was
+declared by a workspace selection: `--collection` names one source and declares
+none, and an emptied index there is still `empty`. A search whose workspace
+selection names a vanished
 collection therefore exits 0 with the remaining evidence and the dead source
 named here; naming an unsearchable collection explicitly with `--collection`
 still fails.

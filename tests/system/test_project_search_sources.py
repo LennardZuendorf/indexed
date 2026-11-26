@@ -234,6 +234,33 @@ def test_an_emptied_source_is_reported_empty(project: Path) -> None:
     )
 
 
+def test_an_emptied_source_named_directly_is_reported_empty(project: Path) -> None:
+    """``--collection`` declares no scope; the emptied index must still say so.
+
+    With no workspace declaration the builder's second loop is the only place
+    that can name the gap. Before the fix this returned ``status: ok`` with
+    zero hits and an empty ``collection_errors`` — a dead source reading as a
+    legitimate no-match (#340 review, the card's red condition).
+    """
+    from indexed.config import get_collections_path, get_global_root
+
+    collection = get_collections_path(get_global_root()) / WIKI
+    index = collection / "indexes" / DEFAULT_INDEXER_NAME / "indexer.faiss"
+    import faiss
+
+    faiss.write_index(faiss.IndexIDMap(faiss.IndexFlatL2(384)), str(index))
+
+    result = runner.invoke(search_cmd.app, [QUERY, "--json", "--collection", WIKI])
+
+    assert result.exit_code == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    sources = _sources(payload)
+    assert sources[WIKI]["status"] == "empty"
+    assert "indexes no documents" in sources[WIKI]["error"]
+    assert payload["collections"] == []
+    assert [error["collection"] for error in payload["collection_errors"]] == [WIKI]
+
+
 def test_a_dead_selected_source_still_fails_non_search_commands(project: Path) -> None:
     """Only search degrades past a vanished entry; every other command is strict.
 

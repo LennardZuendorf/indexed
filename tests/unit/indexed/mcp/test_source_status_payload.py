@@ -208,6 +208,57 @@ def test_without_a_declared_scope_the_answered_collections_are_the_sources() -> 
     assert payload["sources"][0]["status"] == "ok"
 
 
+def test_an_undeclared_empty_index_is_empty_not_ok() -> None:
+    """No declarations (CLI ``--collection``): the opened index is the witness.
+
+    The declaration loop is not the only place a source can be empty. With no
+    declared scope the engine's own ``indexSize`` is the only statement that
+    "there was nothing to match", and it must produce the same verdict — a
+    zero-hit ``ok`` here is exactly the silent failure #340 exists to prevent.
+    """
+    raw = {"wiki": {"collectionName": "wiki", "indexSize": 0, "results": []}}
+
+    payload = build_search_payload(raw, "q")
+
+    assert payload["sources"] == [
+        {
+            "collection": "wiki",
+            "status": "empty",
+            "documents": 0,
+            "error": (
+                "Collection 'wiki' indexes no documents, so nothing can match; "
+                "re-run indexing for it."
+            ),
+        }
+    ]
+    assert payload["collections"] == []
+    assert payload["collection_errors"] == [
+        {
+            "collection": "wiki",
+            "error": (
+                "Collection 'wiki' indexes no documents, so nothing can match; "
+                "re-run indexing for it."
+            ),
+        }
+    ]
+
+
+def test_an_undeclared_empty_index_does_not_hide_beside_an_ok_source() -> None:
+    """The undeclared path keeps each sibling's own verdict and ordering."""
+    raw = {
+        "wiki": {"collectionName": "wiki", "indexSize": 0, "results": []},
+        "docs": _answered("docs"),
+    }
+
+    payload = build_search_payload(raw, "q")
+
+    listed = _sources(payload)
+    assert listed["wiki"]["status"] == "empty"
+    assert listed["docs"]["status"] == "ok"
+    assert payload["collections"] == ["docs"]
+    assert [error["collection"] for error in payload["collection_errors"]] == ["wiki"]
+
+
 def test_sources_are_additive_and_the_shape_stays_small() -> None:
     """R6 — the key is new; nothing else about the documented shape moved."""
     raw = {"docs": _answered("docs")}

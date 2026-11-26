@@ -2601,6 +2601,19 @@ from it, including sources the caller never declared. When two payload fields de
 one fact, a test pins their count and wording equality, not just the presence of each.
 **Tags:** mcp, contract, honesty
 
+### An honesty check in one branch is a check the other branch skips (2026-11-26)
+**Pattern:** `empty` was computed in the loop over *declared* sources. The second loop,
+which builds records for collections the caller handed the engine without declaring them
+(CLI `--collection`, any caller passing `sources=None`), appended every answered
+collection as `ok`. An emptied FAISS index therefore returned `status: ok` with zero hits
+and an empty `collection_errors` — the exact silent failure `sources` exists to prevent,
+alive on a public path after the declared path was fixed and tested.
+**Rule:** when a loop emits a verdict, enumerate every loop that emits that verdict and
+apply the same predicate through one shared helper; then test the payload through each
+public path that reaches a different branch. A green test on the declared path proves
+nothing about the undeclared one.
+**Tags:** mcp, contract, tests
+
 ### A capped fetch is a silent evidence hole (2026-11-26)
 **Pattern:** the GitHub reader asked for `comments(first: 100)` and never looked at the
 connection's `pageInfo`, so comment 120 of a 150-comment issue was absent from the index
