@@ -1,6 +1,7 @@
 """Tests for IndexedError handling at MCP tool/resource boundaries."""
 
 import asyncio
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -46,42 +47,52 @@ def mock_fastmcp_context():
 
 
 class TestSearchToolErrorHandling:
+    @patch.object(tools_module, "svc_status")
     @patch.object(tools_module, "svc_search")
     @patch.object(tools_module, "_resolve_config")
     def test_search_returns_envelope_for_indexed_error(
         self,
         mock_resolve_config: MagicMock,
         mock_search: MagicMock,
+        mock_status: MagicMock,
+        scoped: Any,
+        mcp_status: Any,
     ) -> None:
         mock_resolve_config.return_value = MagicMock()
+        mock_status.return_value = [mcp_status("col")]
         mock_search.side_effect = ConfigurationError("bad search config")
 
         search_tool = _get_tool("search")
-        result = search_tool.fn("test query")
+        result = run_async(search_tool.fn("test query", ctx=scoped("col")))
 
         assert result == {
             "error": "bad search config",
             "type": "ConfigurationError",
         }
 
+    @patch.object(tools_module, "svc_status")
     @patch.object(tools_module, "svc_search")
     @patch.object(tools_module, "_resolve_config")
     def test_search_returns_envelope_for_unexpected_error(
         self,
         mock_resolve_config: MagicMock,
         mock_search: MagicMock,
+        mock_status: MagicMock,
+        scoped: Any,
+        mcp_status: Any,
     ) -> None:
         """A non-IndexedError (e.g. AttributeError from a malformed manifest)
         must still be wrapped in a structured mcp_error_envelope, not escape
         as a raw MCP protocol error.
         """
         mock_resolve_config.return_value = MagicMock()
+        mock_status.return_value = [mcp_status("col")]
         mock_search.side_effect = AttributeError(
             "'NoneType' object has no attribute 'x'"
         )
 
         search_tool = _get_tool("search")
-        result = search_tool.fn("test query")
+        result = run_async(search_tool.fn("test query", ctx=scoped("col")))
 
         assert result == {
             "error": "Internal error: 'NoneType' object has no attribute 'x'",
@@ -98,16 +109,21 @@ class TestSearchCollectionToolErrorHandling:
         mock_resolve_config: MagicMock,
         mock_status: MagicMock,
         mock_search: MagicMock,
+        scoped: Any,
     ) -> None:
         mock_resolve_config.return_value = MagicMock()
         mock_status_item = MagicMock()
+        mock_status_item.name = "my_collection"
         mock_status_item.indexers = ["default_indexer"]
         mock_status_item.source_type = None
         mock_status.return_value = [mock_status_item]
         mock_search.side_effect = StorageError("collection unreadable")
 
         search_collection_tool = _get_tool("search_collection")
-        result = search_collection_tool.fn("my_collection", "test query")
+        ctx = scoped("my_collection")
+        result = run_async(
+            search_collection_tool.fn("my_collection", "test query", ctx=ctx)
+        )
 
         assert result == {
             "error": "collection unreadable",
@@ -122,19 +138,24 @@ class TestSearchCollectionToolErrorHandling:
         mock_resolve_config: MagicMock,
         mock_status: MagicMock,
         mock_search: MagicMock,
+        scoped: Any,
     ) -> None:
         """A non-IndexedError raised during the actual search (after status
         resolution succeeded) must still be wrapped in a structured envelope.
         """
         mock_resolve_config.return_value = MagicMock()
         mock_status_item = MagicMock()
+        mock_status_item.name = "my_collection"
         mock_status_item.indexers = ["default_indexer"]
         mock_status_item.source_type = None
         mock_status.return_value = [mock_status_item]
         mock_search.side_effect = RuntimeError("unexpected failure")
 
         search_collection_tool = _get_tool("search_collection")
-        result = search_collection_tool.fn("my_collection", "test query")
+        ctx = scoped("my_collection")
+        result = run_async(
+            search_collection_tool.fn("my_collection", "test query", ctx=ctx)
+        )
 
         assert result == {
             "error": "Internal error: unexpected failure",
@@ -153,6 +174,7 @@ class TestSourceTypeWhitelisting:
         mock_resolve_config: MagicMock,
         mock_status: MagicMock,
         mock_search: MagicMock,
+        scoped: Any,
     ) -> None:
         """A corrupt/legacy source_type in the manifest must not raise ValidationError.
 
@@ -164,6 +186,7 @@ class TestSourceTypeWhitelisting:
         """
         mock_resolve_config.return_value = MagicMock()
         mock_status_item = MagicMock()
+        mock_status_item.name = "my_collection"
         mock_status_item.indexers = ["default_indexer"]
         mock_status_item.source_type = (
             "legacy_corrupt_type"  # not in SourceConfig Literal
@@ -172,7 +195,10 @@ class TestSourceTypeWhitelisting:
         mock_search.side_effect = StorageError("collection unreadable")
 
         search_collection_tool = _get_tool("search_collection")
-        result = search_collection_tool.fn("my_collection", "test query")
+        ctx = scoped("my_collection")
+        result = run_async(
+            search_collection_tool.fn("my_collection", "test query", ctx=ctx)
+        )
 
         assert result == {
             "error": "collection unreadable",
@@ -187,6 +213,7 @@ class TestSourceTypeWhitelisting:
         mock_resolve_config: MagicMock,
         mock_status: MagicMock,
         mock_run_search: MagicMock,
+        scoped: Any,
     ) -> None:
         """If ``svc_status`` raises an unexpected error (e.g. AttributeError
         from a malformed manifest), search_collection must surface a
@@ -197,7 +224,10 @@ class TestSourceTypeWhitelisting:
         mock_status.side_effect = AttributeError("status backend down")
 
         search_collection_tool = _get_tool("search_collection")
-        result = search_collection_tool.fn("my_collection", "test query")
+        ctx = scoped("my_collection")
+        result = run_async(
+            search_collection_tool.fn("my_collection", "test query", ctx=ctx)
+        )
 
         assert result == {
             "error": "Internal error: status backend down",
@@ -213,6 +243,7 @@ class TestSourceTypeWhitelisting:
         mock_resolve_config: MagicMock,
         mock_status: MagicMock,
         mock_run_search: MagicMock,
+        scoped: Any,
     ) -> None:
         """If ``svc_status`` raises an IndexedError (e.g. a genuinely
         not-found or corrupt collection), search_collection must surface it
@@ -222,7 +253,10 @@ class TestSourceTypeWhitelisting:
         mock_status.side_effect = StorageError("collection manifest corrupt")
 
         search_collection_tool = _get_tool("search_collection")
-        result = search_collection_tool.fn("my_collection", "test query")
+        ctx = scoped("my_collection")
+        result = run_async(
+            search_collection_tool.fn("my_collection", "test query", ctx=ctx)
+        )
 
         assert result == {
             "error": "collection manifest corrupt",
@@ -238,19 +272,24 @@ class TestSourceTypeWhitelisting:
         mock_resolve_config: MagicMock,
         mock_status: MagicMock,
         mock_search: MagicMock,
+        scoped: Any,
     ) -> None:
         """A resolvable collection must still search normally end-to-end —
         removing the fabricated fallback must not break the legitimate path.
         """
         mock_resolve_config.return_value = MagicMock()
         mock_status_item = MagicMock()
+        mock_status_item.name = "my_collection"
         mock_status_item.indexers = ["real_indexer"]
         mock_status_item.source_type = "localFiles"
         mock_status.return_value = [mock_status_item]
         mock_search.return_value = {}
 
         search_collection_tool = _get_tool("search_collection")
-        result = search_collection_tool.fn("my_collection", "test query")
+        ctx = scoped("my_collection")
+        result = run_async(
+            search_collection_tool.fn("my_collection", "test query", ctx=ctx)
+        )
 
         assert "error" not in result
         mock_search.assert_called_once()
@@ -264,11 +303,13 @@ class TestResourceErrorHandling:
     def test_collections_list_returns_envelope_for_indexed_error(
         self,
         mock_status: MagicMock,
+        scoped: Any,
     ) -> None:
         mock_status.side_effect = ConfigurationError("status config invalid")
 
         resource = _get_resource("resource://collections")
-        result = run_async(resource.fn())
+        ctx = scoped("col")
+        result = run_async(resource.fn(ctx=ctx))
 
         assert result == {
             "error": "status config invalid",
@@ -279,6 +320,7 @@ class TestResourceErrorHandling:
     def test_collections_list_returns_envelope_for_unexpected_error(
         self,
         mock_status: MagicMock,
+        scoped: Any,
     ) -> None:
         """Issue #125: the list resource is the boundary — its spec says
         "the boundary envelopes **every** exception". A collections root that
@@ -293,7 +335,8 @@ class TestResourceErrorHandling:
         )
 
         resource = _get_resource("resource://collections")
-        result = run_async(resource.fn())
+        ctx = scoped("col")
+        result = run_async(resource.fn(ctx=ctx))
 
         assert result == {
             "error": (
@@ -309,12 +352,14 @@ class TestResourceErrorHandling:
         self,
         mock_resolve_config: MagicMock,
         mock_status: MagicMock,
+        scoped: Any,
     ) -> None:
         mock_resolve_config.return_value = MagicMock()
         mock_status.side_effect = StorageError("status store unreadable")
 
         resource = _get_resource("resource://collections/status")
-        result = run_async(resource.fn())
+        ctx = scoped("col")
+        result = run_async(resource.fn(ctx=ctx))
 
         assert result == {
             "error": "status store unreadable",
@@ -327,6 +372,7 @@ class TestResourceErrorHandling:
         self,
         mock_resolve_config: MagicMock,
         mock_status: MagicMock,
+        scoped: Any,
     ) -> None:
         """Issue #125: same containment for the second list resource — a scan
         that fails with an ``OSError`` (I/O error on the data volume) must be
@@ -336,7 +382,8 @@ class TestResourceErrorHandling:
         mock_status.side_effect = OSError("[Errno 5] Input/output error")
 
         resource = _get_resource("resource://collections/status")
-        result = run_async(resource.fn())
+        ctx = scoped("col")
+        result = run_async(resource.fn(ctx=ctx))
 
         assert result == {
             "error": "Internal error: [Errno 5] Input/output error",
@@ -349,12 +396,15 @@ class TestResourceErrorHandling:
         self,
         mock_resolve_config: MagicMock,
         mock_status: MagicMock,
+        scoped: Any,
+        bound: Any,
     ) -> None:
         mock_resolve_config.return_value = MagicMock()
         mock_status.side_effect = StorageError("cannot read collection")
 
         template = _get_template("resource://collection/{name}")
-        result = run_async(template.fn(name="my_collection"))
+        with bound(scoped("my_collection")):
+            result = run_async(template.fn(name="my_collection"))
 
         assert result == {
             "error": "cannot read collection",
@@ -367,6 +417,8 @@ class TestResourceErrorHandling:
         self,
         mock_resolve_config: MagicMock,
         mock_status: MagicMock,
+        scoped: Any,
+        bound: Any,
     ) -> None:
         """A non-IndexedError (e.g. AttributeError from a malformed manifest)
         must still be wrapped in a structured mcp_error_envelope, not escape
@@ -378,7 +430,8 @@ class TestResourceErrorHandling:
         )
 
         template = _get_template("resource://collection/{name}")
-        result = run_async(template.fn(name="my_collection"))
+        with bound(scoped("my_collection")):
+            result = run_async(template.fn(name="my_collection"))
 
         assert result == {
             "error": "Internal error: 'NoneType' object has no attribute 'y'",

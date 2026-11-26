@@ -1,10 +1,9 @@
-"""MCP ``search`` answers the workspace's scope, not the whole store (#340).
+"""MCP ``search`` answers the request's scope, not the whole store (#340/#345).
 
 The CLI has narrowed ``index search`` to ``indexed.toml`` since #344; the MCP
-tool still passed ``configs=None`` and searched every collection in the store.
-Two surfaces of one project therefore answered different questions — and the
-same payload then looked honest while being scoped differently. These tests pin
-the parity: the selection decides the configs, an unresolvable entry is named
+tool used to pass ``configs=None`` and search every collection in the store, and
+then (before #345) took the *server process's* workspace. Now the scope is the
+request's own: the selection decides the configs, an unresolvable entry is named
 per source, and a fully dead selection never silently widens to the store.
 """
 
@@ -23,8 +22,24 @@ from indexed.config.workspace_selection import (
 )
 from indexed.mcp import tools as tools_module
 from indexed.mcp import server as server_module
+from indexed.mcp.scope import RequestScope
 
 pytestmark = pytest.mark.unit
+
+
+def _request_scope(selection: WorkspaceSelection) -> RequestScope:
+    return RequestScope(
+        selection=selection, collections_path=Path("/store/collections"), roots=()
+    )
+
+
+def _scope_stub(selection: WorkspaceSelection):
+    """An async resolver returning ``selection``'s request scope."""
+
+    async def _resolve(_ctx: object = None) -> RequestScope:
+        return _request_scope(selection)
+
+    return _resolve
 
 
 def _status(name: str, *, source_type: str = "localFiles", documents: int = 1) -> Mock:
@@ -81,7 +96,7 @@ def _raw(*names: str) -> dict:
 
 def _call_search() -> dict:
     tool = asyncio.run(server_module.mcp.get_tool("search"))
-    return tool.fn("how do I rotate the signing key")
+    return asyncio.run(tool.fn("how do I rotate the signing key"))
 
 
 def _config() -> Mock:
@@ -114,7 +129,6 @@ def test_mcp_search_uses_the_workspace_selection() -> None:
             ),
         ),
     )
-    cli_ctx = Mock(collections_path=Path("/store/collections"), selection=selection)
     seen_configs: list = []
 
     def fake_search(query, configs=None, **_kwargs):
@@ -123,7 +137,11 @@ def test_mcp_search_uses_the_workspace_selection() -> None:
 
     with (
         patch.object(tools_module, "_resolve_config", return_value=_config()),
-        patch.object(tools_module, "resolve_cli_context", return_value=cli_ctx),
+        patch.object(
+            tools_module,
+            "resolve_request_scope",
+            _scope_stub(selection),
+        ),
         patch.object(
             tools_module,
             "svc_status",
@@ -164,12 +182,15 @@ def test_mcp_search_never_widens_to_the_store_when_every_selection_is_dead() -> 
             ),
         ),
     )
-    cli_ctx = Mock(collections_path=Path("/store/collections"), selection=selection)
     search = Mock()
 
     with (
         patch.object(tools_module, "_resolve_config", return_value=_config()),
-        patch.object(tools_module, "resolve_cli_context", return_value=cli_ctx),
+        patch.object(
+            tools_module,
+            "resolve_request_scope",
+            _scope_stub(selection),
+        ),
         patch.object(tools_module, "svc_status", return_value=[_status("unrelated")]),
         patch.object(tools_module, "svc_search", search),
     ):

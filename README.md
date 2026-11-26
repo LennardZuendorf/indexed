@@ -111,6 +111,35 @@ Indexed pre-computes a semantic search index over your code, docs, and project t
 
 Indexed exposes a Model Context Protocol server for AI agent integration.
 
+### Repository scope (MCP roots)
+
+One server can serve several agents at once, so **scope is per request**: the
+server asks the client which directories it is working in (MCP *roots*), reads
+the committed `indexed.toml` at that repository root, and searches exactly that
+selection from the global store. The server's own working directory is never
+scope, so two clients in two repositories get two different, correct answers.
+
+A request that cannot be placed fails closed and says why:
+
+| Error `type` | Meaning |
+| --- | --- |
+| `NoRequestScopeError` | the client advertises no roots, or no root has an `indexed.toml` |
+| `AmbiguousRequestScopeError` | the client's roots resolve to more than one `indexed.toml` |
+| `CollectionOutsideScopeError` | a collection named in a call is outside that selection |
+
+The remedy is a committed definition — `indexed storage migrate` writes one at
+the repository root, or write it yourself:
+
+```toml
+version = 1
+
+[collections]
+use = ["my-docs"]
+```
+
+A client that does not advertise MCP roots cannot use the server; the error
+envelope above is what it receives instead of another project's collections.
+
 ### Claude Code (CLI, VS Code, JetBrains)
 
 Works across all Claude Code surfaces — CLI, VS Code extension, and JetBrains plugin.

@@ -2,6 +2,7 @@
 
 import asyncio
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -141,10 +142,16 @@ class TestConfigLoading:
 class TestSearchToolFunction:
     """Tests for the search tool underlying function."""
 
+    @patch.object(tools_module, "svc_status")
     @patch.object(tools_module, "svc_search")
     @patch.object(server_module, "_get_config")
     def test_search_returns_results(
-        self, mock_get_config: MagicMock, mock_search: MagicMock
+        self,
+        mock_get_config: MagicMock,
+        mock_search: MagicMock,
+        mock_status: MagicMock,
+        scoped: Any,
+        mcp_status: Any,
     ) -> None:
         mock_config = MagicMock()
         mock_config.max_docs = 10
@@ -154,6 +161,10 @@ class TestSearchToolFunction:
         mock_config.include_all_chunks = False
         mock_config.include_matched_chunks = True
         mock_get_config.return_value = mock_config
+        mock_status.return_value = [
+            mcp_status("collection1"),
+            mcp_status("collection2"),
+        ]
 
         mock_search.return_value = {
             "collection1": {
@@ -194,7 +205,8 @@ class TestSearchToolFunction:
 
         search_tool = _get_tool("search")
         assert search_tool is not None
-        result = search_tool.fn("test query")
+        ctx = scoped("collection1", "collection2")
+        result = run_async(search_tool.fn("test query", ctx=ctx))
 
         assert result["query"] == "test query"
         assert result["schema"] == "indexed.search/1"
@@ -207,18 +219,25 @@ class TestSearchToolFunction:
         }
         mock_search.assert_called_once()
 
+    @patch.object(tools_module, "svc_status")
     @patch.object(tools_module, "svc_search")
     @patch.object(server_module, "_get_config")
     def test_search_handles_error(
-        self, mock_get_config: MagicMock, mock_search: MagicMock
+        self,
+        mock_get_config: MagicMock,
+        mock_search: MagicMock,
+        mock_status: MagicMock,
+        scoped: Any,
+        mcp_status: Any,
     ) -> None:
         mock_config = MagicMock()
         mock_get_config.return_value = mock_config
+        mock_status.return_value = [mcp_status("col")]
         mock_search.side_effect = ConfigurationError("Search failed")
 
         search_tool = _get_tool("search")
         assert search_tool is not None
-        result = search_tool.fn("test query")
+        result = run_async(search_tool.fn("test query", ctx=scoped("col")))
 
         assert result == {
             "error": "Search failed",
@@ -237,6 +256,7 @@ class TestSearchCollectionToolFunction:
         mock_get_config: MagicMock,
         mock_status: MagicMock,
         mock_search: MagicMock,
+        scoped: Any,
     ) -> None:
         mock_config = MagicMock()
         mock_config.max_docs = 10
@@ -248,6 +268,7 @@ class TestSearchCollectionToolFunction:
         mock_get_config.return_value = mock_config
 
         mock_status_item = MagicMock()
+        mock_status_item.name = "my_collection"
         mock_status_item.indexers = ["default_indexer"]
         mock_status_item.source_type = "localFiles"
         mock_status.return_value = [mock_status_item]
@@ -272,7 +293,10 @@ class TestSearchCollectionToolFunction:
 
         search_collection_tool = _get_tool("search_collection")
         assert search_collection_tool is not None
-        result = search_collection_tool.fn("my_collection", "test query")
+        ctx = scoped("my_collection")
+        result = run_async(
+            search_collection_tool.fn("my_collection", "test query", ctx=ctx)
+        )
 
         assert result["query"] == "test query"
         assert result["counts"] == {"documents": 1, "hits": 1}
@@ -282,7 +306,10 @@ class TestSearchCollectionToolFunction:
     @patch.object(tools_module, "svc_status")
     @patch.object(server_module, "_get_config")
     def test_search_collection_not_found(
-        self, mock_get_config: MagicMock, mock_status: MagicMock
+        self,
+        mock_get_config: MagicMock,
+        mock_status: MagicMock,
+        scoped: Any,
     ) -> None:
         mock_config = MagicMock()
         mock_get_config.return_value = mock_config
@@ -290,7 +317,14 @@ class TestSearchCollectionToolFunction:
 
         search_collection_tool = _get_tool("search_collection")
         assert search_collection_tool is not None
-        result = search_collection_tool.fn("nonexistent", "test query")
+        with patch(
+            "indexed.mcp.collection_errors.svc_collection_exists", return_value=False
+        ):
+            result = run_async(
+                search_collection_tool.fn(
+                    "nonexistent", "test query", ctx=scoped("nonexistent")
+                )
+            )
 
         assert "error" in result
         assert "not found" in result["error"]
@@ -303,11 +337,13 @@ class TestSearchCollectionToolFunction:
         mock_get_config: MagicMock,
         mock_status: MagicMock,
         mock_search: MagicMock,
+        scoped: Any,
     ) -> None:
         mock_config = MagicMock()
         mock_get_config.return_value = mock_config
 
         mock_status_item = MagicMock()
+        mock_status_item.name = "my_collection"
         mock_status_item.indexers = ["default_indexer"]
         mock_status_item.source_type = None
         mock_status.return_value = [mock_status_item]
@@ -316,7 +352,10 @@ class TestSearchCollectionToolFunction:
 
         search_collection_tool = _get_tool("search_collection")
         assert search_collection_tool is not None
-        result = search_collection_tool.fn("my_collection", "test query")
+        ctx = scoped("my_collection")
+        result = run_async(
+            search_collection_tool.fn("my_collection", "test query", ctx=ctx)
+        )
 
         assert result == {
             "error": "Search failed",
@@ -328,7 +367,9 @@ class TestCollectionsListResourceFunction:
     """Tests for the collections_list resource underlying function."""
 
     @patch.object(resources_module, "svc_status")
-    def test_collections_list_returns_names(self, mock_status: MagicMock) -> None:
+    def test_collections_list_returns_names(
+        self, mock_status: MagicMock, scoped: Any
+    ) -> None:
         mock_status1 = MagicMock()
         mock_status1.name = "collection1"
         mock_status2 = MagicMock()
@@ -337,17 +378,23 @@ class TestCollectionsListResourceFunction:
 
         resource = _get_resource("resource://collections")
         assert resource is not None
-        result = run_async(resource.fn())
+        result = run_async(resource.fn(ctx=scoped("collection1", "collection2")))
 
-        assert result == {"collections": ["collection1", "collection2"]}
+        assert result["collections"] == ["collection1", "collection2"]
+        assert [source["collection"] for source in result["sources"]] == [
+            "collection1",
+            "collection2",
+        ]
 
     @patch.object(resources_module, "svc_status")
-    def test_collections_list_handles_error(self, mock_status: MagicMock) -> None:
+    def test_collections_list_handles_error(
+        self, mock_status: MagicMock, scoped: Any
+    ) -> None:
         mock_status.side_effect = ConfigurationError("Status failed")
 
         resource = _get_resource("resource://collections")
         assert resource is not None
-        result = run_async(resource.fn())
+        result = run_async(resource.fn(ctx=scoped("col")))
 
         assert result == {
             "error": "Status failed",
@@ -361,7 +408,7 @@ class TestCollectionsStatusListResourceFunction:
     @patch.object(resources_module, "svc_status")
     @patch.object(server_module, "_get_config")
     def test_collections_status_list_returns_details(
-        self, mock_get_config: MagicMock, mock_status: MagicMock
+        self, mock_get_config: MagicMock, mock_status: MagicMock, scoped: Any
     ) -> None:
         mock_config = MagicMock()
         mock_config.include_index_size = True
@@ -386,7 +433,7 @@ class TestCollectionsStatusListResourceFunction:
 
         resource = _get_resource("resource://collections/status")
         assert resource is not None
-        result = run_async(resource.fn())
+        result = run_async(resource.fn(ctx=scoped("collection1")))
 
         collections = result["collections"]
         assert len(collections) == 1
@@ -400,7 +447,7 @@ class TestCollectionsStatusListResourceFunction:
     @patch.object(resources_module, "svc_status")
     @patch.object(server_module, "_get_config")
     def test_collections_status_list_handles_error(
-        self, mock_get_config: MagicMock, mock_status: MagicMock
+        self, mock_get_config: MagicMock, mock_status: MagicMock, scoped: Any
     ) -> None:
         mock_config = MagicMock()
         mock_get_config.return_value = mock_config
@@ -408,7 +455,7 @@ class TestCollectionsStatusListResourceFunction:
 
         resource = _get_resource("resource://collections/status")
         assert resource is not None
-        result = run_async(resource.fn())
+        result = run_async(resource.fn(ctx=scoped("col")))
 
         assert result == {
             "error": "Status failed",
@@ -422,7 +469,11 @@ class TestCollectionStatusResourceTemplateFunction:
     @patch.object(resources_module, "svc_status")
     @patch.object(server_module, "_get_config")
     def test_collection_status_returns_details(
-        self, mock_get_config: MagicMock, mock_status: MagicMock
+        self,
+        mock_get_config: MagicMock,
+        mock_status: MagicMock,
+        scoped: Any,
+        bound: Any,
     ) -> None:
         mock_config = MagicMock()
         mock_config.include_index_size = True
@@ -443,7 +494,8 @@ class TestCollectionStatusResourceTemplateFunction:
 
         template = _get_template("resource://collection/{name}")
         assert template is not None
-        result = run_async(template.fn(name="my_collection"))
+        with bound(scoped("my_collection")):
+            result = run_async(template.fn(name="my_collection"))
 
         assert result["name"] == "my_collection"
         assert result["number_of_documents"] == 50
@@ -451,7 +503,11 @@ class TestCollectionStatusResourceTemplateFunction:
     @patch.object(resources_module, "svc_status")
     @patch.object(server_module, "_get_config")
     def test_collection_status_not_found(
-        self, mock_get_config: MagicMock, mock_status: MagicMock
+        self,
+        mock_get_config: MagicMock,
+        mock_status: MagicMock,
+        scoped: Any,
+        bound: Any,
     ) -> None:
         mock_config = MagicMock()
         mock_get_config.return_value = mock_config
@@ -459,7 +515,14 @@ class TestCollectionStatusResourceTemplateFunction:
 
         template = _get_template("resource://collection/{name}")
         assert template is not None
-        result = run_async(template.fn(name="nonexistent"))
+        with (
+            patch(
+                "indexed.mcp.collection_errors.svc_collection_exists",
+                return_value=False,
+            ),
+            bound(scoped("nonexistent")),
+        ):
+            result = run_async(template.fn(name="nonexistent"))
 
         assert "error" in result
         assert "not found" in result["error"]
@@ -467,7 +530,11 @@ class TestCollectionStatusResourceTemplateFunction:
     @patch.object(resources_module, "svc_status")
     @patch.object(server_module, "_get_config")
     def test_collection_status_handles_error(
-        self, mock_get_config: MagicMock, mock_status: MagicMock
+        self,
+        mock_get_config: MagicMock,
+        mock_status: MagicMock,
+        scoped: Any,
+        bound: Any,
     ) -> None:
         mock_config = MagicMock()
         mock_get_config.return_value = mock_config
@@ -475,7 +542,8 @@ class TestCollectionStatusResourceTemplateFunction:
 
         template = _get_template("resource://collection/{name}")
         assert template is not None
-        result = run_async(template.fn(name="my_collection"))
+        with bound(scoped("my_collection")):
+            result = run_async(template.fn(name="my_collection"))
 
         assert result == {
             "error": "Status failed",
@@ -496,7 +564,14 @@ class TestToolRegistration:
         tool = _get_tool("search")
         assert tool is not None
         assert tool.description is not None
-        assert "semantically similar" in tool.description.lower()
+        # The description is the tool's only documentation for an agent: it must
+        # open by naming what the tool does, say what decides the result set
+        # (the scope contract, not a phrase that drifts with the wording), and
+        # leave its required argument documented in the schema.
+        description = tool.description.strip()
+        assert description.startswith("Search ")
+        assert "collection" in description.lower()
+        assert tool.parameters["properties"]["query"]["description"]
 
     def test_search_collection_tool_has_description(self) -> None:
         tool = _get_tool("search_collection")
@@ -532,10 +607,13 @@ class TestResourceDispatch:
     """End-to-end resource dispatch tests via mcp.read_resource()."""
 
     @patch.object(resources_module, "svc_status")
-    def test_read_collections_static(self, mock_status: MagicMock) -> None:
+    def test_read_collections_static(self, mock_status: MagicMock, scoped: Any) -> None:
         item = MagicMock()
         item.name = "alpha"
         mock_status.return_value = [item]
+        # A read through FastMCP builds its own Context; ``scoped`` gives that
+        # context the client roots a real MCP client advertises (#345).
+        scoped("alpha")
 
         result = _read_resource("resource://collections")
 
@@ -545,7 +623,7 @@ class TestResourceDispatch:
     @patch.object(resources_module, "svc_status")
     @patch.object(server_module, "_get_config")
     def test_read_collections_status_static(
-        self, mock_get_config: MagicMock, mock_status: MagicMock
+        self, mock_get_config: MagicMock, mock_status: MagicMock, scoped: Any
     ) -> None:
         from indexed.core.v1.config_models import MCPConfig
 
@@ -562,6 +640,7 @@ class TestResourceDispatch:
         item.relative_path = None
         item.disk_size_bytes = 0
         mock_status.return_value = [item]
+        scoped("alpha")
 
         result = _read_resource("resource://collections/status")
 
@@ -571,7 +650,7 @@ class TestResourceDispatch:
     @patch.object(resources_module, "svc_status")
     @patch.object(server_module, "_get_config")
     def test_read_single_collection_template(
-        self, mock_get_config: MagicMock, mock_status: MagicMock
+        self, mock_get_config: MagicMock, mock_status: MagicMock, scoped: Any
     ) -> None:
         from indexed.core.v1.config_models import MCPConfig
 
@@ -588,6 +667,7 @@ class TestResourceDispatch:
         item.relative_path = None
         item.disk_size_bytes = 0
         mock_status.return_value = [item]
+        scoped("beta")
 
         result = _read_resource("resource://collection/beta")
 
@@ -603,11 +683,15 @@ class TestResourceDispatch:
         mock_get_config: MagicMock,
         _mock_status: MagicMock,
         mock_exists: MagicMock,
+        scoped: Any,
     ) -> None:
         """#112: the single-collection resource must not blame the caller's spelling."""
         from indexed.core.v1.config_models import MCPConfig
 
         mock_get_config.return_value = MCPConfig()
+        # Both names are in the request's scope, so the answer turns on the
+        # store, not on the scope refusing them.
+        scoped("broken", "ghost")
 
         mock_exists.return_value = True
         result = _read_resource("resource://collection/broken")
@@ -701,50 +785,72 @@ class TestLifespan:
 class TestContextHandling:
     """Tests for context handling in tools and resources."""
 
-    @patch.object(tools_module, "svc_search")
-    @patch.object(server_module, "_get_config")
-    def test_search_uses_lifespan_context_when_available(
-        self, mock_get_config: MagicMock, mock_search: MagicMock
-    ) -> None:
-        from indexed.core.v1.config_models import CoreV1SearchConfig
-
-        mock_config = CoreV1SearchConfig()
-        mock_config.max_docs = 5
-        mock_config.max_chunks = 3
-        mock_config.score_threshold = 0.8
-        mock_config.include_full_text = True
-        mock_config.include_all_chunks = False
-        mock_config.include_matched_chunks = True
-
-        mock_context = MagicMock()
-        mock_context.lifespan_context = {"search_config": mock_config}
-
-        mock_search.return_value = {"collection1": []}
-
-        search_tool = _get_tool("search")
-        assert search_tool is not None
-        search_tool.fn("test query", ctx=mock_context)
-
-        mock_search.assert_called_once()
-        mock_get_config.assert_not_called()
-
+    @patch.object(tools_module, "svc_status")
     @patch.object(tools_module, "svc_search")
     @patch.object(tools_module, "_resolve_config")
-    def test_search_falls_back_to_getter_when_context_unavailable(
-        self, mock_resolve_config: MagicMock, mock_search: MagicMock
+    def test_search_scopes_by_the_requests_roots_not_the_lifespan_store(
+        self,
+        mock_resolve_config: MagicMock,
+        mock_search: MagicMock,
+        mock_status: MagicMock,
+        scoped: Any,
+        mcp_status: Any,
+        home: Path,
     ) -> None:
-        from indexed.core.v1.config_models import CoreV1SearchConfig
+        """#345: scope belongs to the request, not to the server's lifespan.
 
-        mock_config = CoreV1SearchConfig()
-        mock_resolve_config.return_value = mock_config
-        mock_search.return_value = {"collection1": []}
+        One server serves many clients; a ``cli_context`` captured at startup
+        (another workspace's store) must not decide which collections a client
+        searches — the client's roots, and the ``indexed.toml`` they resolve to,
+        do.
+        """
+        decoy_store = home.parent / "decoy-store"
+        mock_resolve_config.return_value = MagicMock()
+        mock_status.return_value = [mcp_status("alpha-docs")]
+        mock_search.return_value = {}
 
-        search_tool = _get_tool("search")
-        assert search_tool is not None
-        search_tool.fn("test query", ctx=None)
+        decoy = MagicMock(collections_path=decoy_store)
+        ctx = scoped("alpha-docs", lifespan={"cli_context": decoy})
+        run_async(_get_tool("search").fn("test query", ctx=ctx))
 
         mock_search.assert_called_once()
-        mock_resolve_config.assert_called_once()
+        kwargs = mock_search.call_args.kwargs
+        assert [config.name for config in kwargs["configs"]] == ["alpha-docs"]
+        expected_store = home / ".indexed" / "data" / "collections"
+        assert kwargs["collections_path"] == str(expected_store)
+        assert kwargs["collections_path"] != str(decoy_store)
+
+    @patch.object(tools_module, "svc_status")
+    @patch.object(tools_module, "svc_search")
+    @patch.object(server_module, "_get_config")
+    def test_search_works_when_the_context_has_no_lifespan_state(
+        self,
+        mock_get_config: MagicMock,
+        mock_search: MagicMock,
+        mock_status: MagicMock,
+        scoped: Any,
+        mcp_status: Any,
+    ) -> None:
+        """#345: a request whose roots resolve needs no lifespan state at all.
+
+        The scope comes from the roots and the configuration from the server's
+        own getter, so a client that never inherited a startup context is served
+        exactly like any other.
+        """
+        from indexed.core.v1.config_models import CoreV1SearchConfig
+
+        mock_get_config.return_value = CoreV1SearchConfig()
+        mock_status.return_value = [mcp_status("alpha-docs")]
+        mock_search.return_value = {}
+
+        ctx = scoped("alpha-docs")
+        assert ctx.lifespan_context == {}
+        run_async(_get_tool("search").fn("test query", ctx=ctx))
+
+        mock_search.assert_called_once()
+        mock_get_config.assert_called()
+        configs = mock_search.call_args.kwargs["configs"]
+        assert [config.name for config in configs] == ["alpha-docs"]
 
     def test_resolve_config_returns_lifespan_value(self) -> None:
         """Direct test: resolve_config returns the lifespan-stored config when present."""

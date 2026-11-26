@@ -29,9 +29,10 @@ safe to land together.
 ## Dependencies
 
 - #346 (registry) — shipped, this builds on `CollectionRegistry`.
-- #345 (per-request MCP scope) — not in this feature. A server still resolves one
-  workspace from its CWD; the `CliContext.selection` added here is the object
-  that work will consume.
+- #345 (per-request MCP scope) — a separate feature
+  ([mcp-request-scope](../mcp-request-scope/tech.md)). It takes the selection
+  this feature resolves and re-resolves it from the client's own MCP roots on
+  every request; the startup `CliContext` is not an input.
 - Removing `--local`/`--global` entirely (milestone #229's end state) is a later
   slice; `--rollback` re-targets then, not now.
 
