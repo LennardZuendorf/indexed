@@ -1,6 +1,6 @@
 ---
 type: concept
-updated: 2026-11-23
+updated: 2026-11-26
 ---
 
 # Shared Project Workspace (M1)
@@ -21,6 +21,6 @@ A developer can index a collection once, select it from several repositories and
 
 `indexed storage migrate` moves local collections into the global store and keeps no copy. The separate `indexed index migrate` converts one collection from the v1 to the v2 engine, keeping the original as `<name>.v1-backup`.
 
-The feature design settles how CLI, MCP and LSP supply the workspace, how requests behave without a profile, and how to present migration and rollback.
+The feature design settles how CLI, MCP and LSP supply the workspace, how requests behave without an `indexed.toml` selection, and how to present migration and rollback.
 
 - **Delivered on `main` since v0.0.11.** One global store with a stable-id registry, a committed `indexed.toml` selection resolved by CLI, LSP and MCP, and `indexed storage migrate` with `--dry-run`, `--rollback`, resume and `--verify structural|hash` (#363, #372, #373).
