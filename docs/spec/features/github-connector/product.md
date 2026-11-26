@@ -3,7 +3,7 @@ type: feature-product
 feature: github-connector
 sibling: tech.md
 parent: ../../product.md
-updated: 2026-11-22
+updated: 2026-11-26
 ---
 
 # Feature: GitHub Projects & Issues Connector — Product
@@ -42,7 +42,16 @@ Resolves [issue #90](https://github.com/LennardZuendorf/indexed/issues/90).
 
 The system SHALL index GitHub issues — and, when enabled, pull-request threads —
 from each configured `owner/repo`, capturing title, body, author, state, labels,
-timestamps, URL, and conversation comments as indexable text.
+timestamps, URL, and **the full conversation** (every comment, paginated past the
+first 100; up to the documented 1000-comment cap, reported explicitly when that
+cap truncates a thread) as indexable text.
+
+> **Amendment (2026-11-26):** comments were previously read as
+> `comments(first: 100)` only — a 150-comment issue silently lost everything after
+> comment 100. The reader now follows the comment cursor for up to 10 pages and,
+> if a thread still exceeds 1000 comments, stamps `commentsTruncated` and
+> `commentsLimit` on the document's chunks so a hit never claims complete coverage
+> of a partial thread (#356).
 
 > **Amendment (2026-09-07):** the original requirement text also promised
 > `assignees`, `milestone`, and — for pull requests — review/review-comment
@@ -63,12 +72,22 @@ timestamps, URL, and conversation comments as indexable text.
 - **When** the collection is built
 - **Then** only issues are indexed and no pull-request documents appear; passing `--include-pull-requests` adds PR descriptions and conversation comments as documents (not review/review-comment threads — see the amendment above).
 
+#### Scenario: A long thread is covered, or says it is not
+
+- **Given** an issue with 150 comments whose only relevant text is comment 120
+- **When** the collection is built
+- **Then** comment 120 is indexed (the reader follows the comment cursor past the first 100), each comment appears once, and the issue costs 2 GraphQL requests — its list page plus one comment page; a thread beyond the 1000-comment cap instead carries `commentsTruncated: true` and `commentsLimit: 1000` in chunk metadata, so no hit presents partial coverage as complete.
+
 ### Requirement: Index GitHub Projects v2 boards
 
 The system SHALL, when a `project` selector is configured, resolve the Project v2
 board to its items across all referenced repositories, index each item's
 underlying issue/PR (or draft item), and attach the project's custom field
-values (e.g. Status, Priority, Iteration) to the document metadata.
+values to the document metadata. Two field value types are indexed —
+**single-select** (by option name, e.g. Status = "In Progress", Priority = "P1")
+and **text** fields. Number, date, iteration, milestone, labels and linked-pull-request
+field values are not fetched today; they are absent rather than misreported, and
+adding them is a `fieldValues` fragment change (tech.md § GraphQL reader).
 
 #### Scenario: Project spanning multiple repos
 

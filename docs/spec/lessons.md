@@ -2613,3 +2613,15 @@ apply the same predicate through one shared helper; then test the payload throug
 public path that reaches a different branch. A green test on the declared path proves
 nothing about the undeclared one.
 **Tags:** mcp, contract, tests
+
+### A capped fetch is a silent evidence hole (2026-11-26)
+**Pattern:** the GitHub reader asked for `comments(first: 100)` and never looked at the
+connection's `pageInfo`, so comment 120 of a 150-comment issue was absent from the index
+and the payload said nothing — a search could cite the issue as covered while the answer
+sat past the cap.
+**Rule:** when a fetch has a limit, either page past it or stamp the applied limit into the
+payload (`commentsTruncated`/`commentsLimit`), and state the request ceiling in the spec so
+a test can assert it. A nested connection can never take a cursor inside a list selection —
+paginate it with a follow-up query addressed by node id, and dedupe by id so overlapping
+pages cannot double-index.
+**Tags:** connectors, evidence, honesty

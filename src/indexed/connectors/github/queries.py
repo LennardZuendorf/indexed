@@ -19,6 +19,7 @@ query Issues($owner: String!, $name: String!, $first: Int!, $after: String,
         labels(first: 50) { nodes { name } }
         comments(first: 100) {
           nodes { id url author { login } body createdAt }
+          pageInfo { hasNextPage endCursor }
         }
       }
       pageInfo { hasNextPage endCursor }
@@ -73,6 +74,7 @@ query PullRequests($owner: String!, $name: String!, $first: Int!, $after: String
         labels(first: 50) { nodes { name } }
         comments(first: 100) {
           nodes { id url author { login } body createdAt }
+          pageInfo { hasNextPage endCursor }
         }
       }
       pageInfo { hasNextPage endCursor }
@@ -131,14 +133,20 @@ query ProjectItems($login: String!, $number: Int!, $first: Int!, $after: String)
               author { login }
               repository { owner { login } name }
               labels(first: 50) { nodes { name } }
-              comments(first: 100) { nodes { id url author { login } body createdAt } }
+              comments(first: 100) {
+                nodes { id url author { login } body createdAt }
+                pageInfo { hasNextPage endCursor }
+              }
             }
             ... on PullRequest {
               id number title body state url updatedAt createdAt
               author { login }
               repository { owner { login } name }
               labels(first: 50) { nodes { name } }
-              comments(first: 100) { nodes { id url author { login } body createdAt } }
+              comments(first: 100) {
+                nodes { id url author { login } body createdAt }
+                pageInfo { hasNextPage endCursor }
+              }
             }
             ... on DraftIssue {
               title
@@ -156,9 +164,35 @@ query ProjectItems($login: String!, $number: Int!, $first: Int!, $after: String)
 """
 
 PROJECT_ITEMS_QUERY_NO_COMMENTS = PROJECT_ITEMS_QUERY.replace(
-    "\n              comments(first: 100) { nodes { id url author { login } body createdAt } }",
+    "\n              comments(first: 100) {\n"
+    "                nodes { id url author { login } body createdAt }\n"
+    "                pageInfo { hasNextPage endCursor }\n"
+    "              }",
     "",
 )
+
+# One more page of a thread's comments, addressed by the thread's GraphQL node
+# id. The embedded `comments(first: 100)` in the list queries can only ever
+# return the first page — nested connections take no cursor in a list
+# selection — so every page after the first is a separate follow-up request.
+COMMENT_PAGE_QUERY = """
+query CommentPage($id: ID!, $first: Int!, $after: String) {
+  node(id: $id) {
+    ... on Issue {
+      comments(first: $first, after: $after) {
+        nodes { id url author { login } body createdAt }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+    ... on PullRequest {
+      comments(first: $first, after: $after) {
+        nodes { id url author { login } body createdAt }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}
+"""
 
 # User-owned (not organization-owned) Projects v2 use the identical shape under `user(login:)`.
 PROJECT_ITEMS_QUERY_USER = PROJECT_ITEMS_QUERY.replace(
