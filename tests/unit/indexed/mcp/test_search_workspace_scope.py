@@ -170,6 +170,35 @@ def test_mcp_search_uses_the_workspace_selection() -> None:
     ]
 
 
+def test_mcp_search_reports_an_emptied_collection_as_empty() -> None:
+    """An emptied index is `empty` on the MCP surface too, never a zero-hit `ok`."""
+    selection = _selection("wiki", "src")
+    raw = _raw("wiki", "src")
+    raw["wiki"]["indexSize"] = 0
+    raw["wiki"]["results"] = []
+
+    with (
+        patch.object(tools_module, "_resolve_config", return_value=_config()),
+        patch.object(tools_module, "resolve_request_scope", _scope_stub(selection)),
+        patch.object(
+            tools_module,
+            "svc_status",
+            return_value=[_status("wiki", documents=1), _status("src")],
+        ),
+        patch.object(tools_module, "svc_search", return_value=raw),
+    ):
+        payload = _call_search()
+
+    listed = {source["collection"]: source for source in payload["sources"]}
+    assert listed["wiki"]["status"] == "empty"
+    assert "indexes no documents" in listed["wiki"]["error"]
+    assert "hits" not in listed["wiki"]
+    assert payload["collections"] == ["src"]
+    assert payload["collection_errors"] == [
+        {"collection": "wiki", "error": listed["wiki"]["error"]}
+    ]
+
+
 def test_mcp_search_never_widens_to_the_store_when_every_selection_is_dead() -> None:
     """A fully unresolvable selection is a named empty answer, not the store."""
     selection = _selection(
