@@ -307,6 +307,57 @@ def test_a_client_without_scope_is_told_and_sees_nothing(
     assert "collections" not in listing
 
 
+def test_a_resource_read_outside_the_scope_is_the_tool_refusal(
+    tmp_path: Path, isolated_home: Path, server: str
+) -> None:
+    """The resource and the tool answer one question one way (#345 acceptance).
+
+    The acceptance run reported `resource://collection/beta-docs` answering
+    from `alpha`'s scope without an error while `search_collection` refused, so
+    a client could not tell "you may not see this" from "it is empty". Both now
+    come from the one scope check, so their wording is compared here, not just
+    their type: a second, hand-written message would drift.
+    """
+    from fastmcp import Client
+
+    _create(ALPHA, _corpus(tmp_path / "corpora", "alpha", ALPHA_NEEDLE))
+    _create(BETA, _corpus(tmp_path / "corpora", "beta", BETA_NEEDLE))
+    alpha = tmp_path / "repos" / "alpha"
+    beta = tmp_path / "repos" / "beta"
+    _define(alpha, ALPHA)
+    _define(beta, BETA)
+
+    async def drive() -> dict[str, Any]:
+        async with Client(server, roots=_roots(alpha)) as a:
+            tool = _payload(
+                await a.call_tool(
+                    "search_collection", {"collection": BETA, "query": BETA_NEEDLE}
+                )
+            )
+            return {
+                "tool": tool,
+                "read_out": await _read(a, f"resource://collection/{BETA}"),
+                "read_in": await _read(a, f"resource://collection/{ALPHA}"),
+            }
+
+    out = asyncio.run(drive())
+
+    # 1. The out-of-scope read is a named refusal, not an empty success.
+    assert out["read_out"]["type"] == "CollectionOutsideScopeError", out["read_out"]
+    assert "collections" not in out["read_out"], out["read_out"]
+    assert "documents" not in out["read_out"], out["read_out"]
+    assert BETA in out["read_out"]["error"], out["read_out"]
+
+    # 2. Same refusal as the tool, character for character: one scope check.
+    assert out["tool"]["type"] == "CollectionOutsideScopeError", out["tool"]
+    assert out["read_out"]["error"] == out["tool"]["error"]
+
+    # 3. The in-scope read still answers with that collection's status.
+    assert out["read_in"]["name"] == ALPHA, out["read_in"]
+    assert out["read_in"]["number_of_documents"] > 0, out["read_in"]
+    assert "type" not in out["read_in"], out["read_in"]
+
+
 def test_a_client_presenting_two_definitions_is_told_it_is_ambiguous(
     tmp_path: Path, isolated_home: Path, server: str
 ) -> None:
