@@ -116,7 +116,31 @@ def test_a_failed_source_keeps_the_engine_error_and_the_rest() -> None:
         "status": "failed",
         "error": "No FAISS index found at /store/src/indexes/default",
     }
+    # Exactly one verdict, stated once in each view — not duplicated.
+    assert payload["collection_errors"] == [
+        {
+            "collection": "src",
+            "error": "No FAISS index found at /store/src/indexes/default",
+        }
+    ]
     assert payload["counts"]["hits"] == 1
+
+
+def test_an_undeclared_failed_source_is_a_source_not_silence() -> None:
+    """MCP without a selection and CLI ``--collection`` declare no scope.
+
+    The engine still failed a collection it was handed; that failure must be a
+    ``sources`` record, not a ``collection_errors`` entry with no source beside
+    it (#340 review).
+    """
+    payload = build_search_payload({"src": {"error": "boom"}}, "q")
+
+    assert payload["sources"] == [
+        {"collection": "src", "status": "failed", "error": "boom"}
+    ]
+    assert payload["collection_errors"] == [{"collection": "src", "error": "boom"}]
+    # A failed source was not searched.
+    assert payload["collections"] == []
 
 
 def test_an_empty_collection_is_not_a_zero_hit_match() -> None:
@@ -133,6 +157,9 @@ def test_an_empty_collection_is_not_a_zero_hit_match() -> None:
     assert listed["wiki"]["status"] == "empty"
     assert listed["wiki"]["documents"] == 0
     assert "indexes no documents" in listed["wiki"]["error"]
+    # An empty source answered nothing, so it is not a searched collection —
+    # the docs' contract: a non-`ok` source is never in `collections`.
+    assert "wiki" not in payload["collections"]
     assert any(
         entry["collection"] == "wiki" and "indexes no documents" in entry["error"]
         for entry in payload["collection_errors"]

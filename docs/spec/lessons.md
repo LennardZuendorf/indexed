@@ -2538,3 +2538,35 @@ offset is `Z`, exactly as `%cI`) instead of leaving it to whichever library runs
 **Rule:** a payload that aggregates sources states the *intended* scope beside the answered one, and a source that indexes nothing is never `ok` with zero hits. Detect emptiness from the index the search actually opened (`ntotal`), not only from the manifest — a half-rebuilt collection still claims documents it cannot match. And a locator that knows a path must keep it, or a prose hit cannot be opened at its file.
 **Tags:** search, contract, honesty
 **Date:** 2026-11-26
+
+### Bound the fallback, not only the happy path (2026-11-26)
+**Pattern:** GitHub comment bodies were chunked through the 512-token parser, so the
+bounded-detail test passed — until the parser raised. Both fallback branches appended
+the whole raw comment, and a forced parser failure produced one 30,015-character hit
+from a 30 KB comment. The bound lived in the component that failed, so failure removed it.
+**Rule:** when one component owns a size bound, every fallback path must re-apply an
+explicit bound (here a 4-chars/token window that drops no characters), and the test
+forces each failure mode — raise and empty result — then asserts the hit and payload
+budgets, not just that text survived.
+**Tags:** connectors, testing, payload
+
+### Relax a fail-closed rule at the call site, never in a shared helper (2026-11-26)
+**Pattern:** making search tolerate a vanished selected collection meant passing
+`strict_selection=False` to the selection resolver. It was done in the shared
+storage-mode display helper, which every command calls — so `indexed init` went from
+exit 3 ("collection 'deleted' is not in the store") to exit 0 ("Setup complete").
+The change looked scoped because it was one keyword argument.
+**Rule:** a deliberate fail-open is opt-in at the one command that needs it, and the
+shared helper keeps the fail-closed default. Test the boundary that must still fail
+(a non-search command on the same broken workspace), not only the command that relaxes.
+**Tags:** cli, config, regression
+
+### Derive the second view of a failure from the first (2026-11-26)
+**Pattern:** `sources` and `collection_errors` were written by two loops. A declared
+engine failure was appended by both (duplicate error) while an *undeclared* failure —
+reachable through MCP without a selection and `--collection` — appeared only in
+`collection_errors`, so `sources` was empty exactly when a source had failed.
+**Rule:** make the per-source verdict the single record and generate the flat error list
+from it, including sources the caller never declared. When two payload fields describe
+one fact, a test pins their count and wording equality, not just the presence of each.
+**Tags:** mcp, contract, honesty

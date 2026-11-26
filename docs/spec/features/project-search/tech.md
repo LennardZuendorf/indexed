@@ -106,10 +106,38 @@ Markdown wiki hit carried only a heading path and the document kept its `file://
 url, so there was no `path` to hoist and a consumer had to parse the url; with it
 the payload hoists `path` to the document and drops the url that only restated it.
 
+The parser is the only component that bounds a chunk, so its failure paths must
+not undo the bound: `_fallback_chunks` splits the raw body or comment by the same
+4-characters-per-token window (with no character dropped) whenever the parser
+raises **or** returns no chunks. A no-chunks result is a parser failure, not an
+empty body — dropping it would index the title and call the document complete.
+
+## Failure accounting, strictness, and `collections`
+
+Three rules keep the two views (`sources` and `collection_errors`) from drifting:
+
+- A failure is written **once**. `sources` is the record of every intended
+  source, and `collection_errors` is derived from it — including a collection
+  the engine failed that the caller never declared (MCP `search` without a
+  selection, CLI `--collection`). `sources` stays a superset of `collections`.
+- `collections` lists sources that were searched **and answered**. Every
+  non-`ok` status is absent from it and named in `sources`; a source that
+  indexes nothing must never look like a corpus that matched nothing. The same
+  filter applies to the optional `freshness` list.
+- Only `index search` resolves `indexed.toml` non-strictly. The storage-mode
+  indicator keeps the strict default, so every other command (`init`, `create`,
+  `update`, `remove`, `migrate`, LSP, storage) still fails closed on a vanished
+  selected collection; search opts out at its own call site.
+
 ## Evidence
 
-`tests/unit/indexed/mcp/test_source_status_payload.py` (builder contract),
+`tests/unit/indexed/mcp/test_source_status_payload.py` (builder contract, failure
+accounted exactly once, undeclared failure, empty never in `collections`),
+`tests/unit/indexed/connectors/github/test_converter.py` (bounded fallbacks for
+both parser failure modes, payload budget),
+`tests/unit/indexed/utils/test_storage_info.py` (strict default, search opt-out),
 `tests/unit/indexed/knowledge/commands/test_search.py::TestWorkspaceSelectionScope`
 (degrade, exit code), `tests/system/test_project_search_sources.py` (three real
-seeded collections, one deleted, one emptied, byte budget) and
-`tests/unit/indexed/mcp/test_search_payload_golden.py` (shape, both surfaces).
+seeded collections, one deleted, one emptied, non-search command still strict,
+byte budget) and `tests/unit/indexed/mcp/test_search_payload_golden.py` (shape,
+both surfaces).

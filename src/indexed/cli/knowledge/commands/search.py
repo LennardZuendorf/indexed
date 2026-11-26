@@ -313,7 +313,9 @@ def search(
     if not is_verbose_mode() and not simple:
         from ...utils.storage_info import display_storage_mode_for_command
 
-        display_storage_mode_for_command(console)
+        # Search is the one command that degrades past a vanished selected
+        # collection (the payload names it per source) — #340 R4.
+        display_storage_mode_for_command(console, strict_selection=False)
 
     # Determine collections to search
     skipped_results: Dict[str, Dict[str, str]] = {}
