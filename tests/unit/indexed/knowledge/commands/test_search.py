@@ -1348,13 +1348,19 @@ class TestSearchCommandExecution:
         assert result.exit_code == 0
         payload = json.loads(result.stdout)
         assert payload["collections"] == ["good"]
+        # One failure, one wording: the source record and the flat error list
+        # (and stderr) carry the same sentence (#340).
+        error = payload["collection_errors"][0]["error"]
         assert payload["collection_errors"] == [
-            {
-                "collection": "broken",
-                "error": "Collection 'broken' is unavailable, skipping",
-            }
+            {"collection": "broken", "error": error}
         ]
-        assert "Collection 'broken' is unavailable, skipping" in result.stderr
+        assert "no usable index" in error
+        assert payload["sources"][1] == {
+            "collection": "broken",
+            "status": "unusable",
+            "error": error,
+        }
+        assert error in result.stderr
 
     def test_search_all_collections_runs_and_formats(self, monkeypatch):
         """Searching all collections should call svc_search and display results."""
@@ -2705,20 +2711,49 @@ class TestWorkspaceSelectionScope:
         assert "outside the workspace selection" in result.stderr
         assert "documents" in json.loads(result.stdout)
 
-    def test_a_selected_collection_that_vanished_fails_closed(
+    def test_a_selected_collection_that_vanished_is_named_and_the_rest_search(
         self, monkeypatch
     ) -> None:
-        """R3: never widen to the store, never narrow to nothing."""
+        """R4: a dead source is named per source, never a silent narrowing.
+
+        Before #340 this exited 1 with no payload at all, so one deleted
+        collection blanked a query the other two could answer.
+        """
+        from indexed.config.workspace_selection import UnresolvedEntry
+
         seen: list = []
-        self._install(
-            monkeypatch,
-            self._selection(("docs", "gone")),
-            [self._status("docs")],
-            seen,
+        selection = self._selection(("docs",))
+        selection = type(selection)(
+            path=selection.path,
+            root=selection.root,
+            collections=selection.collections,
+            unresolved=(
+                UnresolvedEntry(
+                    entry="gone",
+                    name="gone",
+                    reason=(
+                        "Workspace definition '/repo/indexed.toml' selects "
+                        "collection 'gone', which is not in the store."
+                    ),
+                    position=1,
+                ),
+            ),
         )
+        self._install(monkeypatch, selection, [self._status("docs")], seen)
 
-        result = runner.invoke(search_cmd.app, ["my-query"])
+        result = runner.invoke(search_cmd.app, ["my-query", "--json"])
 
-        assert result.exit_code == 1
-        assert "'gone'" in result.stdout
-        assert seen == []
+        assert result.exit_code == 0, result.stdout
+        payload = json.loads(result.stdout)
+        assert seen == ["docs"]
+        assert payload["collections"] == ["docs"]
+        assert [source["collection"] for source in payload["sources"]] == [
+            "docs",
+            "gone",
+        ]
+        assert payload["sources"][1]["status"] == "missing"
+        assert "is not in the store" in payload["sources"][1]["error"]
+        assert payload["collection_errors"] == [
+            {"collection": "gone", "error": payload["sources"][1]["error"]}
+        ]
+        assert "not in the store" in result.stderr

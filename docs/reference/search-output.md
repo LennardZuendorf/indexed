@@ -32,12 +32,20 @@ indexed index search "how is the cache keyed and invalidated" -c docs-demo --jso
     "docs-demo"
   ],
   "collection_errors": [],
+  "sources": [
+    {
+      "collection": "docs-demo",
+      "source_type": "localFiles",
+      "status": "ok",
+      "hits": 8
+    }
+  ],
   "documents": [
     {
       "collection": "docs-demo",
       "source_type": "localFiles",
       "id": "caching.md",
-      "url": "file:///var/lib/srv/hermes/profiles/prism/cache/scratch/docs-demo/caching.md",
+      "path": "/var/lib/srv/hermes/profiles/prism/cache/scratch/docs-demo/caching.md",
       "score_kind": "l2_squared",
       "hits": [
         {
@@ -151,8 +159,32 @@ re-rank and freshness are all off by default, so none of them appears in it.
 | `counts.hits` | int | Total hits across all documents. |
 | `collections` | string[] | Collections that were **searched**. Empty means nothing was searched (no collections, or none searchable) — that is not the same as "searched and nothing matched". A collection whose *requested option* was skipped is still listed here, because it was searched and its documents are in the payload; it then also appears in `collection_errors`. |
 | `collection_errors` | object[] | Always present, `[]` when every request was carried out as asked. Each entry is `{"collection": "<name>", "error": "<message>"}` and means **something was not done as asked** — which is not the same as "this collection failed". Read `collections` to tell the two states apart: a collection that **failed** is absent from `collections` and contributes no documents; a collection whose requested Git option was **skipped** is in `collections` with its documents present, just unfiltered/unranked (see [Requests that were not carried out](#requests-that-were-not-carried-out)). Entries are per request-not-applied, so one collection can have more than one. CLI collections with readable status but no indexers also appear here when other collections are searched. The CLI resolves `collections` through status, so a collection with an unreadable manifest is omitted from both arrays. MCP `search` enumerates every collection directory, so a collection it cannot search is reported here; `search_collection` checks status first and returns a top-level error for a present but unusable named collection (see Failures). |
+| `sources` | object[] | One entry per collection the request meant to search — the `indexed.toml` selection's scope, or the single name given to `--collection` — in that order. It is always present and always a superset of `collections`. Each entry is `{collection, source_type?, status, documents?, hits?, error?}`; `status` is `ok`, `empty`, `missing`, `unusable` or `failed`, and every non-`ok` entry carries an `error` naming the source and the remedy, mirrored into `collection_errors`. This is how "three sources were meant to answer, one did not" becomes visible; before it, a dead source was indistinguishable from a corpus that never had it. See [`sources[]`](#sources-did-every-source-answer). |
 | `documents` | object[] | Matched documents, best first. A document's position reflects its **best** hit; full-precision ties keep discovery order. Ranking happens before output scores are rounded. |
 | `freshness` | object[], optional | One verdict per successfully searched collection, present **only** when freshness was requested (`include_freshness` / `--freshness`). Omitted — not `[]` — otherwise. See [`freshness[]`](#freshness). |
+
+### `sources[]` — did every source answer?
+
+One entry per collection the **request meant to search**: the names in the
+workspace `indexed.toml` selection, or the one name passed to `--collection`.
+The list is always present, follows declaration order, and is a superset of
+`collections` (a collection the engine answered but the caller never declared is
+appended as `ok`).
+
+| `status` | Meaning | `error` |
+|---|---|---|
+| `ok` | Searched. Zero hits means the corpus had nothing to match this query — a legitimate answer. | absent |
+| `empty` | Indexes nothing: the manifest counts zero documents, or the index the engine opened holds no vectors. | present — never reported as a zero-hit `ok` |
+| `missing` | Named by the workspace definition but absent from the store (deleted collection or data directory). | present, naming `indexed.toml` and the remedy |
+| `unusable` | In the store but has no usable index (no indexers, unreadable manifest). | present |
+| `failed` | The engine raised while searching it. The other sources still answer. | present, carrying the engine's message |
+
+A non-`ok` source is never in `collections`, always contributes a matching
+`collection_errors` entry with the same wording, and does not stop the other
+sources from answering. A search whose workspace selection names a vanished
+collection therefore exits 0 with the remaining evidence and the dead source
+named here; naming an unsearchable collection explicitly with `--collection`
+still fails.
 
 ## Document object
 
@@ -201,6 +233,7 @@ MCP tool, `--git-provenance` on the CLI) or enabled by
 | `score` | float | The raw engine score, rounded to 4 decimals. Only comparable **within one `score_kind`**. |
 | `locator` | object | Where the hit sits. See below. |
 | `text` | string | The matched chunk's text. Only an exact leading `# <metadata.file_path>\n` prefix is removed when that metadata path is present; other text stays unchanged. `kind: "document"` means position unknown: the text may still be a body fragment, not a title or whole-document chunk. |
+| `url` | string, optional | Where this hit opens, **only when that is narrower than its document** — a GitHub issue comment hit points at the comment, not the issue. Omitted otherwise; use the document's `url`/`path`. |
 | `git` | object, optional | Line-level blame for this hit's own span, present only when line blame was requested and the chunk records a span. See [Hit `git` block](#hit-git-block). |
 
 ### What `score_kind` changes about `relevance`
@@ -278,8 +311,8 @@ chunk's `file_path` or its `file://` url), otherwise it falls through to `page`,
 |---|---|---|
 | `line_span` | `start_line`, `end_line`, optional `path` | Code, from tree-sitter chunks. Lines are **1-based and inclusive** — what `grep -n` prints and what your editor shows. `path` stays on each located hit when multiple distinct paths prevent a document `path`. |
 | `page` | `page`, optional `path` | Positive page metadata, when supplied by the producer. `page` is 1-based; a PDF/DOCX source alone does not guarantee this metadata. |
-| `headings` | `headings` | Prose: Markdown, Jira, Confluence, Outline. The heading path down to the chunk, e.g. `["Caching notes", "Invalidation"]`. Never empty — a chunk with no real headings degrades to `document` rather than claiming a precision it does not have. |
-| `document` | *(none)* | The chunk carries no usable position. Open the source for context; the chunk can be any body fragment, including one of many chunks. |
+| `headings` | `headings`, optional `path` | Prose: Markdown, Jira, Confluence, Outline. The heading path down to the chunk, e.g. `["Caching notes", "Invalidation"]`. Never empty — a chunk with no real headings degrades to `document` rather than claiming a precision it does not have. `path` is carried whenever one is resolvable, so a prose hit can be opened at its file; it is hoisted to the document when every hit shares one path. |
+| `document` | optional `path` | The chunk carries no usable position. Open the source for context; the chunk can be any body fragment, including one of many chunks. `path` is still stated when known. |
 
 ## `freshness[]`
 

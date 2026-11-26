@@ -359,7 +359,11 @@ def test_prose_document_gets_a_heading_path() -> None:
         {"headings": ["Search", "Output shape"]}, "file:///docs/search.md"
     )
 
-    assert locator == {"kind": "headings", "headings": ["Search", "Output shape"]}
+    assert locator == {
+        "kind": "headings",
+        "headings": ["Search", "Output shape"],
+        "path": "/docs/search.md",
+    }
 
 
 def test_empty_heading_path_is_document_not_an_empty_headings_locator() -> None:
@@ -368,7 +372,8 @@ def test_empty_heading_path_is_document_not_an_empty_headings_locator() -> None:
     not have, so it must fall through to ``document``; genuine headings survive
     the cleaning, and blank ones are dropped rather than kept."""
     assert build_locator({"headings": [""]}, "file:///docs/a.md") == {
-        "kind": "document"
+        "kind": "document",
+        "path": "/docs/a.md",
     }
     assert build_locator({"headings": ["", "   "]}, "") == {"kind": "document"}
     assert build_locator({"headings": ["", " Real "]}, "") == {
@@ -390,7 +395,10 @@ def test_chunk_without_any_position_says_document_not_a_fake_range() -> None:
     assert build_locator({}, "https://jira.example/T-1") == {"kind": "document"}
     assert build_locator(None, "") == {"kind": "document"}
     # A partial pair (start without end) is not a range either.
-    assert build_locator({"start_line": 4}, "file:///a.py") == {"kind": "document"}
+    assert build_locator({"start_line": 4}, "file:///a.py") == {
+        "kind": "document",
+        "path": "/a.py",
+    }
 
 
 def test_line_span_outranks_a_page_which_outranks_headings() -> None:

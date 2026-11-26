@@ -7,11 +7,12 @@ services — issue #119).
 
 import json
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import typer
 from rich.markup import escape
 
+from ...search_sources import declare_sources, scope_of
 from ...utils.logging import is_verbose_mode
 from ...utils.simple_output import is_simple_output, print_json
 from ...utils.console import console
@@ -282,7 +283,9 @@ def search(
     from indexed.cli.composition import resolve_collections_context
 
     mode_override = ctx.obj.get("mode_override") if ctx.obj else None
-    cli_ctx = resolve_collections_context(mode_override=mode_override)
+    cli_ctx = resolve_collections_context(
+        mode_override=mode_override, strict_selection=False
+    )
     collections_path = str(cli_ctx.collections_path)
     selection = getattr(cli_ctx, "selection", None)
 
@@ -313,31 +316,33 @@ def search(
         display_storage_mode_for_command(console)
 
     # Determine collections to search
+    skipped_results: Dict[str, Dict[str, str]] = {}
+    declarations: Optional[List[Dict[str, Any]]] = None
     if collection is None:
-        # Search all collections
+        # Search all collections — or, with a definition, the ones it selects.
+        # A selected collection the store no longer serves does NOT abort the
+        # query (#340 R4): it was never searched, so the payload must say so per
+        # source while the others still answer. It stays out of `collections`.
         all_statuses = status_svc(collections_path=collections_path)
-        if selection is not None and all_statuses:
-            # A definition is a SCOPE, so the store's enumeration is narrowed to
-            # it — in definition order, which is the order the user wrote. The
-            # entries were validated when the definition was resolved, so a
-            # selected collection that has no status now means the store changed
-            # under this command: fail closed, never silently widen or narrow.
+        if selection is not None:
             by_name = {status.name: status for status in all_statuses}
-            missing = [name for name in selection.names if name not in by_name]
-            if missing:
-                named = ", ".join(f"'{name}'" for name in missing)
-                message = (
-                    f"Workspace definition '{selection.path}' selects {named}, "
-                    f"which the store at '{collections_path}' no longer serves. "
-                    f"Run `indexed collection list` to see what it can select."
-                )
-                if simple:
-                    print_json({"error": message})
-                else:
-                    print_error(message)
-                raise typer.Exit(1)
-            all_statuses = [by_name[name] for name in selection.names]
-        if not all_statuses:
+            all_statuses = [
+                by_name[name] for name in selection.names if name in by_name
+            ]
+        intended_names, unresolved_entries = scope_of(selection, all_statuses)
+        declarations = declare_sources(
+            names=intended_names,
+            statuses=all_statuses,
+            unresolved=unresolved_entries,
+        )
+        for entry in unresolved_entries:
+            notice = str(getattr(entry, "reason", "source is missing"))
+            skipped_results[str(getattr(entry, "name", ""))] = {"error": notice}
+            if simple:
+                typer.echo(notice, err=True)
+            else:
+                print_error(notice)
+        if not all_statuses and not intended_names:
             if simple:
                 print_json({"error": "No collections found"})
                 return
@@ -350,13 +355,14 @@ def search(
             return
 
         collections_to_search = [s.name for s in all_statuses]
-        if not simple:
+        if not simple and collections_to_search:
             # `query` is user input — escape before entering markup, the
             # surrounding style tags are ours (foundation/6c bug E2).
             console.print(
                 f'\n[{get_heading_style()}]Searching for [{get_accent_style()}]"{escape(query)}"[/{get_accent_style()}] in {len(collections_to_search)} Collections:[/{get_heading_style()}]'
             )
     else:
+        declarations = None
         # Search specific collection
         statuses = status_svc([collection], collections_path=collections_path)
         if not statuses:
@@ -393,14 +399,21 @@ def search(
         s.name: s for s in (all_statuses if collection is None else statuses)
     }
     search_configs = {}
-    skipped_results = {}
+    declared_notice = {
+        str(entry["collection"]): str(entry["error"])
+        for entry in declarations or ()
+        if entry.get("error")
+    }
     for coll_name in collections_to_search:
         coll_status = status_by_name.get(coll_name)
         if coll_status is None or not coll_status.indexers:
             # Machine mode owns stdout: the notice is still reported, but on
             # stderr, so `--json`'s stdout stays parseable (same rule as the
-            # --rerank notice below).
-            notice = f"Collection '{coll_name}' is unavailable, skipping"
+            # --rerank notice below). The payload says the same sentence for
+            # the same source (#340): one failure, one wording.
+            notice = declared_notice.get(coll_name) or (
+                f"Collection '{coll_name}' is unavailable, skipping"
+            )
             skipped_results[coll_name] = {"error": notice}
             if simple:
                 typer.echo(notice, err=True)
@@ -455,9 +468,28 @@ def search(
         # A specific collection was named but turned out unsearchable (corrupt
         # manifest / no indexers): that is a failed request, not just "nothing
         # to search" — exit non-zero. Searching ALL collections and finding
-        # none searchable stays a soft no-op (exit 0), same as "no collections
-        # found" above.
+        # none searchable is a soft no-op (exit 0) — but with a definition the
+        # payload must still name every source it could not answer (#340 R2),
+        # because "three sources were meant to be searched" is the answer, not
+        # "no searchable collections".
         named_collection_requested = collection is not None
+        # `declarations` is the intended scope when a workspace definition
+        # decided it; `or ()` keeps ty from narrowing it to None here.
+        declared_scope = list(declarations or ())
+        if declared_scope:
+            if simple:
+                from indexed.mcp.formatting import build_search_payload
+
+                print_json(
+                    build_search_payload(
+                        dict(skipped_results), query, sources=declared_scope
+                    )
+                )
+            else:
+                console.print(
+                    f"[{get_dim_style()}]No searchable collections available[/{get_dim_style()}]"
+                )
+            return
         if simple:
             print_json({"error": "No searchable collections available"})
         else:
@@ -517,8 +549,9 @@ def search(
             else:
                 print_info(notice)
 
-    # Search each collection with phased progress
-    results = skipped_results if simple else {}
+    # Search each collection with phased progress. The skipped ones ride along
+    # so every surface reports them, not only --json (#340 R2).
+    results = dict(skipped_results)
 
     if simple or is_verbose_mode():
         # Simple output / verbose mode: no progress display
@@ -566,7 +599,7 @@ def search(
     if simple:
         from indexed.mcp.formatting import build_search_payload
 
-        print_json(build_search_payload(results, query))
+        print_json(build_search_payload(results, query, sources=declarations))
     elif compact:
         format_search_results_compact(query, results, limit=display_limit)
     else:

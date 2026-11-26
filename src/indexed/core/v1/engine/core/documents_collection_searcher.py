@@ -76,6 +76,10 @@ class DocumentCollectionSearcher:
         return {
             "collectionName": self.collection_name,
             "indexerName": self.indexer.get_name(),
+            # Vectors actually in the index — not what the manifest claims.
+            # A payload must be able to tell "nothing matched" from "there was
+            # nothing to match" (#340 R3), and only the opened index knows.
+            "indexSize": self.indexer.get_size(),
             # The collection's reader type ("localFiles"/"jira"/…), the only
             # true per-hit source discriminator there is (issue #108/#109).
             # Absent rather than guessed when the manifest can't be read.

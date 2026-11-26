@@ -230,10 +230,14 @@ def test_symbols_skip_collections_that_failed() -> None:
         (
             {"headings": ["A", "", "B"]},
             "file:///a.md",
-            {"kind": "headings", "headings": ["A", "B"]},
+            {"kind": "headings", "headings": ["A", "B"], "path": "/a.md"},
         ),
-        ({"headings": ["", " "]}, "file:///a.md", {"kind": "document"}),
-        ({}, "file:///a.txt", {"kind": "document"}),
+        (
+            {"headings": ["", " "]},
+            "file:///a.md",
+            {"kind": "document", "path": "/a.md"},
+        ),
+        ({}, "file:///a.txt", {"kind": "document", "path": "/a.txt"}),
         ({}, "https://example.atlassian.net/wiki/x", {"kind": "document"}),
     ],
 )

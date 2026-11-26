@@ -27,6 +27,11 @@ def _issue_node(number: int, title: str) -> dict:
         "comments": {
             "nodes": [
                 {
+                    "id": f"IC_{number}_1",
+                    "url": (
+                        f"https://github.com/octo/hello/issues/{number}"
+                        "#issuecomment-1001"
+                    ),
                     "author": {"login": "reviewer"},
                     "body": "lgtm",
                     "createdAt": "2026-06-20T11:00:00Z",
@@ -107,7 +112,14 @@ def test_maps_issue_fields():
     assert doc["labels"] == ["bug"]
     assert doc["author"] == "octocat"
     assert doc["kind"] == "issue"
-    assert doc["comments"] == [{"author": "reviewer", "body": "lgtm"}]
+    assert doc["comments"] == [
+        {
+            "id": "IC_7_1",
+            "url": "https://github.com/octo/hello/issues/7#issuecomment-1001",
+            "author": "reviewer",
+            "body": "lgtm",
+        }
+    ]
 
 
 def test_rate_limit_retries_then_succeeds():

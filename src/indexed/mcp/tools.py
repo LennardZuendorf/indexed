@@ -14,6 +14,8 @@ from indexed.core.engine import (
 from indexed.config.errors import IndexedError
 
 from indexed.cli.errors import MCPError, mcp_error_envelope
+from indexed.cli.search_sources import declare_sources, scope_of
+from indexed.config.workspace_selection import WorkspaceSelection
 from .collection_errors import unresolvable_collection_error
 from .config import resolve_cli_context, resolve_config as _resolve_config
 from .formatting import build_search_payload
@@ -30,6 +32,7 @@ def _run_search(
     search_cfg: Any,
     collections_path: str,
     *,
+    sources: Optional[List[Dict[str, Any]]] = None,
     changed_since: Optional[str] = None,
     git_provenance: Optional[bool] = None,
     git_line_blame: Optional[bool] = None,
@@ -74,7 +77,7 @@ def _run_search(
             collections_path=collections_path,
             **git_kwargs,
         )
-        return build_search_payload(raw_results, query)
+        return build_search_payload(raw_results, query, sources=sources)
     except IndexedError as e:
         return mcp_error_envelope(e)
     except Exception as e:  # noqa: BLE001 - MCP boundary must never leak a raw error
@@ -141,11 +144,55 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
         cli_ctx = resolve_cli_context(ctx)
         collections_path = str(cli_ctx.collections_path)
 
+        # A workspace definition is the same scope the CLI resolves (#340). MCP
+        # used to pass ``configs=None`` and search the whole store, so two
+        # surfaces of one project answered different questions.
+        selection = getattr(cli_ctx, "selection", None)
+        declarations: Optional[List[Dict[str, Any]]] = None
+        configs: Optional[List[Any]] = None
+        if isinstance(selection, WorkspaceSelection):
+            try:
+                statuses = svc_status(collections_path=collections_path)
+            except IndexedError as e:
+                return mcp_error_envelope(e)
+            except Exception as e:  # noqa: BLE001 - MCP boundary never leaks a raw error
+                logger.exception("Unexpected error resolving the workspace scope")
+                return mcp_error_envelope(MCPError(f"Internal error: {e}"))
+            scope_names, unresolved = scope_of(selection, statuses)
+            declarations = declare_sources(
+                names=scope_names, statuses=statuses, unresolved=unresolved
+            )
+            by_name = {status.name: status for status in statuses}
+            configs = []
+            for declaration in declarations:
+                status = by_name.get(str(declaration["collection"]))
+                if status is None or not status.indexers or "status" in declaration:
+                    continue
+                raw_source_type = status.source_type if status.source_type else None
+                source_type = (
+                    raw_source_type
+                    if raw_source_type in _ALLOWED_SOURCE_TYPES
+                    else "localFiles"
+                )
+                configs.append(
+                    SourceConfig(
+                        name=str(declaration["collection"]),
+                        type=source_type,
+                        base_url_or_path="",
+                        indexer=status.indexers[0],
+                    )
+                )
+            if not configs:
+                # Every selected source is gone or unusable: answering from the
+                # whole store would silently widen the scope. The payload says so.
+                return build_search_payload({}, query, sources=declarations)
+
         return _run_search(
             query,
-            None,
+            configs,
             search_cfg,
             collections_path,
+            sources=declarations,
             changed_since=changed_since,
             git_provenance=git_provenance,
             git_line_blame=git_line_blame,
@@ -234,6 +281,13 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             [source_config],
             search_cfg,
             collections_path,
+            sources=[
+                {
+                    "collection": collection,
+                    "source_type": source_type,
+                    "documents": getattr(coll_status, "number_of_documents", None),
+                }
+            ],
             changed_since=changed_since,
             git_provenance=git_provenance,
             git_line_blame=git_line_blame,
