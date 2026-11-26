@@ -1,6 +1,6 @@
 ---
 type: area
-updated: 2026-11-22
+updated: 2026-11-23
 code: [src/indexed/core, src/indexed/connectors]
 ---
 
@@ -16,6 +16,7 @@ code: [src/indexed/core, src/indexed/connectors]
 | **Outline Wiki** | ✅ Shipped | Index Outline docs + attachments (Cloud or self-hosted) |
 | **Chunking** | ✅ Shipped | Split documents into searchable chunks (configurable size/overlap) |
 | **Incremental Updates** | ✅ Shipped | Update collections without full re-index |
+| **Local watching** | ✅ Shipped | `indexed index watch` keeps a local collection current; MCP watching is opt-in (`[mcp] watch_enabled`) for the local collections present at startup |
 | **Batch Processing** | ✅ Shipped | Efficient batch embedding generation |
 | **GitHub Issues/PRs/Projects** | ◑ Mostly shipped | Index issues, PR threads, and Projects v2 boards ([Feature Sequence](../concepts/feature-sequence.md) Feature 19 — chunk-hash reuse follow-up not yet planned) |
 | Google Drive | 📋 Planned | Index Google Docs, Sheets, Slides |

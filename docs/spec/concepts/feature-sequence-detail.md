@@ -1,6 +1,6 @@
 ---
 type: concept
-updated: 2026-11-22
+updated: 2026-11-26
 ---
 
 # Feature Sequence: delivered-feature detail
@@ -31,3 +31,32 @@ note, shipped in PR #153): the `ConfigService.instance()` → `get_config()/relo
 rename and the path/mode resolver consolidation — structure-only, R3 does not depend
 on them; both are folded into Feature 14 Simplify (simplify/4). Unblocks Feature 14
 (Simplify).
+
+### Delivered baseline
+
+Two tables split at the `v0.0.11` release boundary (published 2026-11-20), so a row
+claims only what the artifact it names contains. Both record delivery, not the
+milestone status in [readiness](readiness/README.md). A feature marked `◑` in
+[Feature Sequence](feature-sequence.md) is still delivered where it appears: that
+table tracks whether its live surface is complete, these track when the bytes shipped.
+
+#### In the `v0.0.11` artifact
+
+| Feature | State | Evidence |
+| --- | --- | --- |
+| Core indexing, connectors and v1/v2 coexistence | DONE | [Facade](../../../src/indexed/core/engine.py), [v2 and migration](../../../src/indexed/core/v2/), [connectors](../../../src/indexed/connectors/registry.py) |
+| github-connector | SHIPPED, SPEC WRAP-UP OPEN | [GitHub connector](../../../src/indexed/connectors/github/), [#200](https://github.com/LennardZuendorf/indexed/pull/200) |
+| retrieval-eval | SHIPPED, SPEC WRAP-UP OPEN | [Harness and evidence](../../../eval/README.md), [#297](https://github.com/LennardZuendorf/indexed/pull/297) |
+| lsp-tier0 | SHIPPED, SPEC WRAP-UP OPEN | [Editor server](../../../src/indexed/lsp/), [#303](https://github.com/LennardZuendorf/indexed/pull/303) |
+| lsp-tier1 | SHIPPED, SPEC WRAP-UP OPEN | [Editor system tests](../../../tests/system/test_lsp_out_of_process.py), [#303](https://github.com/LennardZuendorf/indexed/pull/303) |
+| file-watcher | SHIPPED, CATCH-UP OPEN | [CLI #278](https://github.com/LennardZuendorf/indexed/pull/278), [MCP #316](https://github.com/LennardZuendorf/indexed/pull/316), [catch-up test](../../../tests/system/test_mcp_watch_freshness.py) |
+| Canonical search, Git provenance and Claude Code installer | DONE | [Search contract](../../reference/search-output.md), [Git #293](https://github.com/LennardZuendorf/indexed/pull/293), [installer #317](https://github.com/LennardZuendorf/indexed/pull/317) |
+
+#### On `main` since `v0.0.11`
+
+| Feature | State | Evidence |
+| --- | --- | --- |
+| collection-registry | MERGED, SPEC IN REVIEW | [Registry](../../../src/indexed/config/collections_registry.py), [migration service](../../../src/indexed/cli/storage/commands/_migration.py), [#363](https://github.com/LennardZuendorf/indexed/pull/363), [#373](https://github.com/LennardZuendorf/indexed/pull/373) |
+| workspace-selection | MERGED, SPEC IN REVIEW | [Selection](../../../src/indexed/config/workspace_selection.py), [resolver](../../../src/indexed/cli/composition.py), [#372](https://github.com/LennardZuendorf/indexed/pull/372) |
+| codex-install, opencode-install | MERGED, SPEC IN REVIEW | [Codex](../../../src/indexed/cli/install_codex.py), [OpenCode](../../../src/indexed/cli/install_opencode.py), [#365](https://github.com/LennardZuendorf/indexed/pull/365), [#368](https://github.com/LennardZuendorf/indexed/pull/368) |
+| MCP resource errors and Python range | MERGED | [#374](https://github.com/LennardZuendorf/indexed/pull/374), [#371](https://github.com/LennardZuendorf/indexed/pull/371), [pyproject](../../../pyproject.toml) |

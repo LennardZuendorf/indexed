@@ -1,6 +1,6 @@
 ---
 type: hub
-updated: 2026-11-22
+updated: 2026-11-23
 ---
 
 # Plan
@@ -9,7 +9,7 @@ Root roadmap: whole-feature gates only, no unit-level backlog, no long-horizon w
 
 ## Where we are
 
-- [Current status](concepts/current-status.md): v0.1.0 Alpha, breaking changes allowed.
+- [Current status](concepts/current-status.md): Alpha v0.0.11, breaking changes allowed.
 - [Current focus](concepts/current-focus/README.md): recently delivered work, by feature.
 - [Versioning strategy](concepts/versioning-strategy.md): MAJOR.MINOR.PATCH and what alpha means.
 
@@ -17,6 +17,7 @@ Root roadmap: whole-feature gates only, no unit-level backlog, no long-horizon w
 
 - [Feature sequence](concepts/feature-sequence.md): binary whole-feature gates, features 1 to 24.
 - [Delivered-feature detail](concepts/feature-sequence-detail.md): notes behind the rows.
+- [Readiness milestones](concepts/readiness/README.md): six product-readiness milestones, their acceptance and their GitHub state.
 - Feature folders (fallback layer; each needs a row here):
 
 | Feature | Spec |

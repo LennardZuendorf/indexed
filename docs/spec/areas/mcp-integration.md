@@ -1,6 +1,6 @@
 ---
 type: area
-updated: 2026-11-22
+updated: 2026-11-23
 code: [src/indexed/mcp]
 ---
 
@@ -8,7 +8,7 @@ code: [src/indexed/mcp]
 
 | Feature | Status | Description |
 |---------|--------|-------------|
-| **Tools** | ✅ Shipped | `search`, `list_collections`, `collection_status` |
+| **Tools** | ✅ Shipped | `search` and `search_collection` |
 | **Resources** | ✅ Shipped | Collection listings and status endpoints |
 | **Stdio Transport** | ✅ Shipped | For Claude Desktop, Cline |
 | **HTTP Transport** | ✅ Shipped | Network-accessible server |

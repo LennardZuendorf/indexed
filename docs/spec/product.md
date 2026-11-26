@@ -1,11 +1,11 @@
 ---
 type: hub
-updated: 2026-11-22
+updated: 2026-11-23
 ---
 
 # Product
 
-**indexed** builds a local, privacy-first knowledge base per project: code, docs, issues and wikis become searchable collections, exposed to AI agents over MCP. All processing stays local. Status: v0.1.0 Alpha.
+**indexed** builds a local, privacy-first knowledge base per project: code, docs, issues and wikis become searchable collections, exposed to AI agents over MCP. All processing stays local. Status: [Alpha v0.0.11](https://github.com/LennardZuendorf/indexed/releases/tag/v0.0.11).
 
 Architecture is in [tech.md](tech.md), sequencing in [plan.md](plan.md), the interface language in [design.md](design.md).
 

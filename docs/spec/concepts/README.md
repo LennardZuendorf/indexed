@@ -1,6 +1,6 @@
 ---
 type: hub
-updated: 2026-11-22
+updated: 2026-11-23
 ---
 
 # Concepts
@@ -17,4 +17,5 @@ Vision, principles, output formats, and the delivery plan.
 - [Feature Sequence](feature-sequence.md)
 - [Feature Sequence: delivered-feature detail](feature-sequence-detail.md)
 - [Versioning Strategy](versioning-strategy.md)
+- [Readiness milestones](readiness/README.md): six product-readiness milestones and their acceptance.
 - [Current Focus](current-focus/README.md)

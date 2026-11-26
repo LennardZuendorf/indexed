@@ -1,6 +1,6 @@
 ---
 type: hub
-updated: 2026-11-22
+updated: 2026-11-23
 ---
 
 # Tech
@@ -31,6 +31,7 @@ Architecture, rules, CI gates and the per-component specs.
 - [Spec Ledger Merging](spec-ledger-merging.md)
 - [Size-Gate CI](size-gate-ci.md)
 - [Spec-Root CI](spec-root-ci.md)
+- [Readiness Contracts](readiness-contracts.md): the cross-milestone contracts for scope, evidence and release proof.
 - [App tech spec](app/README.md)
 - [CI Benchmarking](ci-benchmarking/README.md)
 - [Config tech spec](config/README.md)
