@@ -47,6 +47,19 @@ def _is_organization_not_found(error: GitHubGraphQLError) -> bool:
     )
 
 
+def _is_node_not_found(error: GitHubGraphQLError) -> bool:
+    """True when a follow-up `node(id:)` probe answered "no such node".
+
+    A thread deleted between its list page and its comment page comes back as
+    `data.node: null` plus a NOT_FOUND error at `path=["node"]`; that is
+    truncation to report, not a reason to abort the crawl.
+    """
+    return any(
+        entry.get("type") == "NOT_FOUND" and entry.get("path") == ["node"]
+        for entry in (error.errors or [])
+    )
+
+
 class GitHubGraphQLReader:
     """Reads issues, pull requests, and Projects v2 boards from GitHub via the
     GraphQL v4 API.
@@ -133,24 +146,38 @@ class GitHubGraphQLReader:
     def _deduplicated_documents(self) -> list[dict]:
         """Raw issue documents across all configured repos, deduplicated by id.
 
-        A document reachable via more than one source (e.g. a repo scan and a
-        project board) is kept once, carrying the union of every copy's
-        project_fields — non-empty values win, and later copies take
-        precedence on overlapping field names — so a project-sourced
-        duplicate is never repeated but never loses its board fields.
+        Deduplication happens inside the crawl (`_merge_documents`, before
+        comment pagination), so a document reachable via more than one source
+        (e.g. a repo scan and a project board) is kept once, carrying the union
+        of every copy's project_fields — non-empty values win, later copies take
+        precedence on overlapping field names — and fetches its remaining
+        comment pages once, not once per source.
         """
+        return self._fetch_documents()
+
+    @staticmethod
+    def _merge_documents(documents: list[dict]) -> list[dict]:
         order: list[str] = []
         kept: dict[str, dict] = {}
-        for doc in self._fetch_documents():
+        for doc in documents:
             doc_id = doc["id"]
             if doc_id not in kept:
                 kept[doc_id] = doc
                 order.append(doc_id)
                 continue
             new_fields = doc.get("project_fields")
+            primary = kept[doc_id]
+            merged = {**primary}
             if new_fields:
-                merged = {**(kept[doc_id].get("project_fields") or {}), **new_fields}
-                kept[doc_id] = {**kept[doc_id], "project_fields": merged}
+                merged["project_fields"] = {
+                    **(primary.get("project_fields") or {}),
+                    **new_fields,
+                }
+            # Keep the comment continuation key from whichever copy has one.
+            for key in ("_nodeId", "_commentsCursor"):
+                if key not in merged and doc.get(key):
+                    merged[key] = doc[key]
+            kept[doc_id] = merged
         return [kept[doc_id] for doc_id in order]
 
     def _fetch_documents(self) -> list[dict]:
@@ -207,7 +234,11 @@ class GitHubGraphQLReader:
             documents: list[dict] = []
             for batch in results:
                 documents.extend(batch)
-            return documents
+            # Dedupe before comment pagination: a thread reachable from both a
+            # repo scan and a project board must fetch its remaining comment
+            # pages once, not once per source.
+            merged = self._merge_documents(documents)
+            return await self._complete_comment_pages(client, semaphore, merged)
 
     async def _fetch_issues(
         self,
@@ -246,7 +277,7 @@ class GitHubGraphQLReader:
             if not page_info["hasNextPage"]:
                 break
             after = page_info["endCursor"]
-        return await self._complete_comment_pages(client, semaphore, documents)
+        return documents
 
     def _issue_to_document(
         self, owner: str, name: str, node: dict, kind: str = "issue"
@@ -309,12 +340,19 @@ class GitHubGraphQLReader:
             pages = 1
             has_next = True
             while has_next and pages < MAX_COMMENT_PAGES:
-                data = await self._post_graphql(
-                    client,
-                    semaphore,
-                    queries.COMMENT_PAGE_QUERY,
-                    {"id": node_id, "first": COMMENT_PAGE_SIZE, "after": cursor},
-                )
+                try:
+                    data = await self._post_graphql(
+                        client,
+                        semaphore,
+                        queries.COMMENT_PAGE_QUERY,
+                        {"id": node_id, "first": COMMENT_PAGE_SIZE, "after": cursor},
+                    )
+                except GitHubGraphQLError as exc:
+                    if not _is_node_not_found(exc):
+                        raise
+                    # The thread vanished mid-crawl: keep what was collected and
+                    # let the truncation branch below report incomplete coverage.
+                    break
                 connection = (data.get("node") or {}).get("comments")
                 if connection is None:
                     break
@@ -381,7 +419,7 @@ class GitHubGraphQLReader:
             if not page_info["hasNextPage"]:
                 break
             after = page_info["endCursor"]
-        return await self._complete_comment_pages(client, semaphore, documents)
+        return documents
 
     def _graphql_pr_states(self) -> list[str] | None:
         if self._state == "all":
@@ -452,7 +490,7 @@ class GitHubGraphQLReader:
             if not page_info["hasNextPage"]:
                 break
             after = page_info["endCursor"]
-        return await self._complete_comment_pages(client, semaphore, documents)
+        return documents
 
     def _project_item_to_document(self, node: dict) -> dict | None:
         content = node.get("content")

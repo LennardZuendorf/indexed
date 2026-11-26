@@ -214,3 +214,79 @@ def test_pull_request_comments_also_paginate():
 
     assert len(doc["comments"]) == 150
     assert doc["comments"][-1]["id"] == "IC_150"
+
+
+def test_vanished_thread_marks_truncation_instead_of_failing():
+    """A thread deleted between its list page and its comment page answers
+    `node: null` + NOT_FOUND; that must be reported as truncation, not raise."""
+
+    def router(body):
+        if body["query"] == queries.ISSUES_QUERY:
+            return FakeResponse(200, _issue_page(_thread_node(1, "issues", 150)))
+        return FakeResponse(
+            200,
+            {
+                "data": {"node": None},
+                "errors": [{"type": "NOT_FOUND", "path": ["node"]}],
+            },
+        )
+
+    (doc,) = _run(_reader(), router)
+
+    assert len(doc["comments"]) == 100
+    assert doc["commentsTruncated"] is True
+    assert doc["commentsLimit"] == 100
+
+
+def test_overlapping_repo_and_project_thread_paginates_once():
+    """The same 150-comment thread reached from `repos` and a project board
+    must cost one comment page, not one per source: dedupe runs before
+    pagination."""
+    requests: list[dict] = []
+
+    def router(body):
+        requests.append(body)
+        query = body["query"]
+        node = _thread_node(1, "issues", 150)
+        if query == queries.ISSUES_QUERY:
+            return FakeResponse(200, _issue_page(node))
+        if query == queries.PROJECT_ITEMS_QUERY:
+            node["repository"] = {"owner": {"login": "octo"}, "name": "hello"}
+            return FakeResponse(
+                200,
+                {
+                    "data": {
+                        "organization": {
+                            "projectV2": {
+                                "items": {
+                                    "nodes": [
+                                        {
+                                            "id": "PVTI_1",
+                                            "content": {
+                                                **node,
+                                                "__typename": "Issue",
+                                            },
+                                            "fieldValues": {"nodes": []},
+                                        }
+                                    ],
+                                    "pageInfo": {
+                                        "hasNextPage": False,
+                                        "endCursor": None,
+                                    },
+                                }
+                            }
+                        }
+                    }
+                },
+            )
+        return FakeResponse(
+            200,
+            {"data": {"node": {"comments": _comment_connection(101, 150, 150)}}},
+        )
+
+    docs = _run(_reader(project=("octo", 12)), router)
+
+    assert len(docs) == 1
+    assert len(docs[0]["comments"]) == 150
+    comment_pages = [r for r in requests if r["query"] == queries.COMMENT_PAGE_QUERY]
+    assert len(comment_pages) == 1

@@ -186,7 +186,10 @@ comment pages (1000 comments) in total, the one embedded in its list page plus u
 to 9 follow-ups, so a 150-comment issue costs exactly
 `1 + ceil((150-100)/100) = 2` requests.
 Comments are appended through a `seen` id set, so an overlapping or shifted page
-cannot duplicate a comment. At the cap the document carries
+cannot duplicate a comment. Deduplication (`_merge_documents`) runs inside the
+crawl *before* this pass, so a thread reachable from both `repos` and a project
+board fetches its remaining pages once, not once per source. At the cap the
+document carries
 `commentsTruncated: True` and `commentsLimit: 1000` (pages × 100) instead of
 looking complete; the converter copies both onto every chunk of that document,
 which is how a search hit can tell it is citing a partial thread. A thread whose
