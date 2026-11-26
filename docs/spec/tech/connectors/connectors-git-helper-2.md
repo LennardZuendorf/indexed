@@ -1,6 +1,6 @@
 ---
 type: tech
-updated: 2026-11-22
+updated: 2026-11-26
 applies: src/indexed/utils/git_meta.py
 ---
 
@@ -30,6 +30,8 @@ applies: src/indexed/utils/git_meta.py
   otherwise read `fresh` forever.
 - `last_commit(repo, path)` — ONE `git log -1 --format=…` per file, giving
   `{commit, short, author, email, committedAt, subject}`. `committedAt` is the committer time; author time remains the blame recency signal. Line blame is an independent opt-in.
+  `%cI` renders a zero offset as `Z`; `blame_lines` must produce the identical string
+  for the same commit, so `_iso_time` maps offset `0` to `Z` too — one commit, one spelling.
 - `snapshot_is_current(base_path, source_id, modified_time, indexed_at=None)` — compares
   a node's indexed `modified_time` with the file's mtime now (`os.path` + `stat`, no
   subprocess). The stored value is offset-aware UTC, so the comparison is
