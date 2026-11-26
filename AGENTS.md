@@ -58,8 +58,11 @@ commit subject or add a body/footer; leave a spec drifting from the code; over-c
 
 ## Learnings
 
-Earned defaults live in **`docs/spec/lessons.md`** — read at session start, apply without
-being asked, and add a lesson after every correction. Load-bearing highlights: lazy ML
+Earned defaults live in **`docs/spec/lessons.md`** — read it at session start, apply without
+being asked, and add a lesson after every correction. Do not restate lessons here: this file is
+the operating contract, that file is the ledger, and a copy here is the one that goes stale.
+
+Load-bearing highlights, kept because they are the ones an agent breaks on day one: lazy ML
 imports keep startup <1s; ty must be fully clean tree-wide (0 diagnostics, no baseline);
 coverage is measured on installed packages (`--cov=src`); `ConfigService` is a singleton
 (respect the priority chain); connectors are Protocol-based with `from_manifest`; core is
@@ -67,34 +70,8 @@ consumed only through the `indexed.core.engine` facade, with `composition.py` th
 site; FAISS Flat is correct for <100k docs; spec drift is the main failure mode — fix the
 spec in the same cycle; a comment is one line of *why*, never an essay; Rich silently drops
 a bracketed `[dotted.key]` from any `typer.Option(help=...)` string (parsed as a markup
-tag, not printed) — write config keys unbracketed in help text. Dependency
-lock reconciliation can leave metadata stale after temporary resolver
-constraints are removed; run `uv lock` against the final `pyproject.toml`. KISS wins.
-Evaluation reports reconcile saved rankings, labels, counts and metrics. Capture
-one usable model cache before HOME isolation and use it for checks and loads.
-Scoped evaluation config restores overrides and validates only measured namespaces.
-Check fixture whitespace before freezing hashes. Compare fixture paths as Path objects.
-Clear hook Git routing variables before temporary-repository tests.
-Refresh touched spec dates when publication crosses calendar days.
-Read saved totals/verdicts; retain environment notes; step success is not a verdict.
-Bound formatted comments after escaping and link omitted details to artifacts.
-Canonical search retains errors and matched text; rank before rounding.
-Check exceptional CLI exit status before parsing stdout.
-Empty collections may mean all searches failed; inspect collection_errors.
-Freeze hashes after pinned formatting; check branch and HEAD before mutations.
-Read hit paths before document paths; decode local file URLs and fetch remote URLs.
-Match action-captured baseline refs and sanitized target filenames; never re-fetch after measurement.
-Verify exact dependency-PR package unions and baseline assertion failures before publishing.
-Pin event SHAs; accept only exact same-tree native wrappers; require every selected row.
-Advisory reports must not skip the independently enforced A/B setup and results. Integrate reviewed CI gates before timing; verify automatic merges; preserve product bytes.
-Use UTF-16 LSP positions. Pin absolute parent/child source paths and locked environments; use UV_NO_SYNC=1 when sharing them. Filter Git matches before result truncation; preserve literal NUL-delimited paths and committed-file provenance.
+tag, not printed) — write config keys unbracketed in help text.
 
 Agent skills are **not vendored** — they install from `skills-lock.json` via `npx skills`
 (`npx skills list` shows the set). The root `CLAUDE.md`/`WARP.md` are symlinks to this
 file (multi-tool compatibility).
-Canonicalize only generated eval path prefixes; record harness digests; control test Git evidence.
-Reject equal-missing model snapshots and common instrumentation before comparison.
-Verify invalid-result artifacts through the actual publisher consumer.
-Pin corpus bytes; retain original/refreshed tips; keep AGENTS snapshots outside worktrees.
-Pin uv environments/caches and plan paths; avoid zsh's path; select dist suffixes. Rebuild expired temporary evidence from Git.
-Capture source review threads early; keep mutable spec metadata out of union merges; Check doc unions against line limits; distinguish requirement IDs from measured test totals. Keep promoted contracts scoped. Audit project packages; verify advisory patch floors. Persist reader settings; isolate Git fixtures from signing and ambient routing. Verify workflow fixture paths, cache access and reused environment versions before running tests. Measure cumulative prefix size limits. Catch up at watcher startup; retain pre-update signatures. Match reader exclusions and exclude resolved storage from scans; fail incomplete source inventories; validate CLI overrides and imported test contracts. Extend config test ports for storage forwarding; inspect conflict blocks before merging digests. Use isolated seeded model caches and limit concurrent full suites. Verify report readiness and syntax-check diagnostic helpers. Record model thread limits and baseline comparisons. Match baseline localhost and worktree access for system checks. Cover every deselected test across functional and serial timing checks; read each tool's argument schema. Run performance budgets exclusively with normal native settings matching the baseline. Refresh source heads and expired environments; pin commit identity and signing explicitly. Derive nested test environments from the running interpreter; test optional host variables set and absent. Restore the configured signing identity before creating signed commits. Refresh source feedback with heads before closure; test protocol consumers and import aliases. Pin evidence by unit and phase; test full Unicode and locator identity. Fetch new base objects and measure merged size limits; retain existing test headroom. Prewarm and validate tokenizer vocabulary before both retrieval measurements.
