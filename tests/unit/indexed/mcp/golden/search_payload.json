@@ -10,6 +10,20 @@
     "notes-v2"
   ],
   "collection_errors": [],
+  "sources": [
+    {
+      "collection": "indexed-src",
+      "source_type": "localFiles",
+      "status": "ok",
+      "hits": 3
+    },
+    {
+      "collection": "notes-v2",
+      "source_type": "outline",
+      "status": "ok",
+      "hits": 1
+    }
+  ],
   "documents": [
     {
       "collection": "notes-v2",
@@ -65,7 +79,7 @@
       "collection": "indexed-src",
       "source_type": "localFiles",
       "id": "docs/search.md",
-      "url": "file:///repo/docs/search.md",
+      "path": "/repo/docs/search.md",
       "score_kind": "l2_squared",
       "hits": [
         {

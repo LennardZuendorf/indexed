@@ -18,7 +18,7 @@ query Issues($owner: String!, $name: String!, $first: Int!, $after: String,
         author { login }
         labels(first: 50) { nodes { name } }
         comments(first: 100) {
-          nodes { author { login } body createdAt }
+          nodes { id url author { login } body createdAt }
         }
       }
       pageInfo { hasNextPage endCursor }
@@ -72,7 +72,7 @@ query PullRequests($owner: String!, $name: String!, $first: Int!, $after: String
         author { login }
         labels(first: 50) { nodes { name } }
         comments(first: 100) {
-          nodes { author { login } body createdAt }
+          nodes { id url author { login } body createdAt }
         }
       }
       pageInfo { hasNextPage endCursor }
@@ -131,14 +131,14 @@ query ProjectItems($login: String!, $number: Int!, $first: Int!, $after: String)
               author { login }
               repository { owner { login } name }
               labels(first: 50) { nodes { name } }
-              comments(first: 100) { nodes { author { login } body createdAt } }
+              comments(first: 100) { nodes { id url author { login } body createdAt } }
             }
             ... on PullRequest {
               id number title body state url updatedAt createdAt
               author { login }
               repository { owner { login } name }
               labels(first: 50) { nodes { name } }
-              comments(first: 100) { nodes { author { login } body createdAt } }
+              comments(first: 100) { nodes { id url author { login } body createdAt } }
             }
             ... on DraftIssue {
               title
@@ -156,7 +156,7 @@ query ProjectItems($login: String!, $number: Int!, $first: Int!, $after: String)
 """
 
 PROJECT_ITEMS_QUERY_NO_COMMENTS = PROJECT_ITEMS_QUERY.replace(
-    "\n              comments(first: 100) { nodes { author { login } body createdAt } }",
+    "\n              comments(first: 100) { nodes { id url author { login } body createdAt } }",
     "",
 )
 

@@ -56,6 +56,25 @@ class SelectedCollection:
 
     name: str
     id: Optional[str] = None
+    #: Position in ``[collections].use`` — kept so a resolved entry and an
+    #: unresolved one can be put back into the order the user wrote (#340).
+    position: int = 0
+
+
+@dataclass(frozen=True)
+class UnresolvedEntry:
+    """A definition entry the store can no longer serve.
+
+    Data, not an exception, because a *search* degrades per source: it reports
+    this entry as a `missing` source and answers from the rest (#340 R4).
+    Every other command resolves strictly and turns it back into the same
+    ``WorkspaceSelectionError`` it has always raised.
+    """
+
+    entry: str
+    name: str
+    reason: str
+    position: int = 0
 
 
 @dataclass(frozen=True)
@@ -65,11 +84,20 @@ class WorkspaceSelection:
     path: Path
     root: Path
     collections: tuple[SelectedCollection, ...]
+    #: Entries that no longer resolve (strict resolution raises instead).
+    unresolved: tuple[UnresolvedEntry, ...] = ()
 
     @property
     def names(self) -> tuple[str, ...]:
-        """The selected collection names, in definition order."""
+        """The selected collection names that resolved, in definition order."""
         return tuple(collection.name for collection in self.collections)
+
+    @property
+    def scope(self) -> tuple[str, ...]:
+        """Every intended name, resolved or not, in definition order."""
+        ordered = [(entry.position, entry.name) for entry in self.collections]
+        ordered += [(entry.position, entry.name) for entry in self.unresolved]
+        return tuple(name for _position, name in sorted(ordered))
 
     def __contains__(self, name: object) -> bool:
         return name in self.names
@@ -191,21 +219,38 @@ def resolve_entries(
     path: Path,
     registry: CollectionRegistry,
     collections_path: Path,
-) -> tuple[SelectedCollection, ...]:
-    """Turn raw entries into collections, or raise naming the offending entry."""
+    strict: bool = True,
+) -> tuple[tuple[SelectedCollection, ...], tuple[UnresolvedEntry, ...]]:
+    """Turn raw entries into collections, or raise naming the offending entry.
+
+    Broken *files* always raise: an unknown id form, a duplicate entry. A broken
+    *store* — the collection or its data directory is gone — raises only when
+    ``strict`` is on (every command but a search); with ``strict=False`` it is
+    returned as an :class:`UnresolvedEntry` so a search can name it per source
+    and still answer from the others (#340 R4).
+    """
     available = _available_names(collections_path)
     resolved: list[SelectedCollection] = []
+    unresolved: list[UnresolvedEntry] = []
     seen: set[str] = set()
-    for entry in entries:
+    for position, entry in enumerate(entries):
         collection_id: Optional[str] = None
         if _STABLE_ID.match(entry):
             record = registry.by_id(entry)
             if record is None:
-                raise WorkspaceSelectionError(
+                reason = (
                     f"Workspace definition '{path}' selects collection id '{entry}', "
                     "which the shared registry does not know. Run `indexed collection "
                     "list` in this project for the ids it can select."
                 )
+                if strict:
+                    raise WorkspaceSelectionError(reason)
+                unresolved.append(
+                    UnresolvedEntry(
+                        entry=entry, name=entry, reason=reason, position=position
+                    )
+                )
+                continue
             name = record.name
             collection_id = record.id
         else:
@@ -213,20 +258,32 @@ def resolve_entries(
             record = registry.find(name)
             collection_id = record.id if record is not None else None
 
-        if name not in available:
-            raise WorkspaceSelectionError(
-                f"Workspace definition '{path}' selects collection '{name}', which is "
-                f"not in the store at '{collections_path}'. Run `indexed collection "
-                "list` to see what this project can select."
-            )
         if name in seen:
             raise WorkspaceSelectionError(
                 f"Workspace definition '{path}' selects collection '{name}' twice; a "
                 "selection is a set, so remove the repeated entry."
             )
         seen.add(name)
-        resolved.append(SelectedCollection(name=name, id=collection_id))
-    return tuple(resolved)
+
+        if name not in available:
+            reason = (
+                f"Workspace definition '{path}' selects collection '{name}', which is "
+                f"not in the store at '{collections_path}'. Run `indexed collection "
+                "list` to see what this project can select."
+            )
+            if strict:
+                raise WorkspaceSelectionError(reason)
+            unresolved.append(
+                UnresolvedEntry(
+                    entry=entry, name=name, reason=reason, position=position
+                )
+            )
+            continue
+
+        resolved.append(
+            SelectedCollection(name=name, id=collection_id, position=position)
+        )
+    return tuple(resolved), tuple(unresolved)
 
 
 def load_selection(
@@ -235,18 +292,25 @@ def load_selection(
     registry: CollectionRegistry,
     collections_path: Path,
     home: Optional[Path] = None,
+    strict: bool = True,
 ) -> Optional[WorkspaceSelection]:
     """Resolve the workspace's definition, or ``None`` when it has none."""
     path = find_definition(workspace, home=home)
     if path is None:
         return None
-    collections = resolve_entries(
+    collections, unresolved = resolve_entries(
         read_definition(path),
         path=path,
         registry=registry,
         collections_path=collections_path,
+        strict=strict,
     )
-    return WorkspaceSelection(path=path, root=path.parent, collections=collections)
+    return WorkspaceSelection(
+        path=path,
+        root=path.parent,
+        collections=collections,
+        unresolved=unresolved,
+    )
 
 
 # --- writing (migration and rollback) ----------------------------------------

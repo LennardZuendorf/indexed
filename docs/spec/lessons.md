@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-25
+updated: 2026-11-26
 ---
 
 # Lessons Learned
@@ -2531,4 +2531,10 @@ two answers for one commit (dogfood M9). Every non-zero offset agreed, which is 
 outputs, never a prefix — and the reference states the normalisation rule (here: zero
 offset is `Z`, exactly as `%cI`) instead of leaving it to whichever library runs last.
 **Tags:** git, contract, testing
+**Date:** 2026-11-26
+
+### A zero-hit answer is not evidence of an empty corpus (2026-11-26)
+**Pattern:** the search payload listed only what the engine answered (`collections`) and what it complained about (`collection_errors`), so a source that was deleted, never built, or whose index held zero vectors produced **no trace at all**. "Two sources answered" and "three were meant to, one died" were byte-identical, which would have made every later quality number quietly wrong (#340).
+**Rule:** a payload that aggregates sources states the *intended* scope beside the answered one, and a source that indexes nothing is never `ok` with zero hits. Detect emptiness from the index the search actually opened (`ntotal`), not only from the manifest — a half-rebuilt collection still claims documents it cannot match. And a locator that knows a path must keep it, or a prose hit cannot be opened at its file.
+**Tags:** search, contract, honesty
 **Date:** 2026-11-26

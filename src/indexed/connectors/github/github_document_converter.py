@@ -80,8 +80,33 @@ class GitHubDocumentConverter:
             if not body.strip():
                 continue
             author = comment.get("author") or "unknown"
+            meta = {**src_meta, "commentAuthor": author}
+            # The comment's own address, so a hit can be cited as the comment
+            # rather than as "somewhere in this issue" (#340 R1).
+            if comment.get("id"):
+                meta["commentId"] = comment["id"]
+            if comment.get("url"):
+                meta["commentUrl"] = comment["url"]
             text = f"Comment by {author}:\n\n{body}"
-            chunks.append(
-                {"indexedData": text, "metadata": {**src_meta, "commentAuthor": author}}
+            # Bounded by the same 512-token chunker as an issue body: one long
+            # comment must not become one unbounded hit (#340 R5).
+            try:
+                parsed = self._parser.parse_bytes(text.encode("utf-8"), "content.md")
+            except Exception:
+                logger.warning(
+                    "Failed to parse GitHub comment on %s; using raw text",
+                    document["id"],
+                )
+                chunks.append({"indexedData": text, "metadata": dict(meta)})
+                continue
+            if not parsed.chunks:
+                chunks.append({"indexedData": text, "metadata": dict(meta)})
+                continue
+            chunks.extend(
+                {
+                    "indexedData": chunk.contextualized_text,
+                    "metadata": {**meta, **chunk.metadata},
+                }
+                for chunk in parsed.chunks
             )
         return chunks
