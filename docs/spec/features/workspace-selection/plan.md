@@ -30,9 +30,9 @@ safe to land together.
 
 - #346 (registry) — shipped, this builds on `CollectionRegistry`.
 - #345 (per-request MCP scope) — a separate feature
-  ([mcp-request-scope](../mcp-request-scope/tech.md)). It consumes the
-  `CliContext.selection` this feature produces and applies it per request from
-  the client's MCP roots.
+  ([mcp-request-scope](../mcp-request-scope/tech.md)). It takes the selection
+  this feature resolves and re-resolves it from the client's own MCP roots on
+  every request; the startup `CliContext` is not an input.
 - Removing `--local`/`--global` entirely (milestone #229's end state) is a later
   slice; `--rollback` re-targets then, not now.
 

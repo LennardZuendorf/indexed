@@ -107,12 +107,18 @@ def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[P
     ``HOME`` env var — never ``Path.home()``, already patched by the session
     fixture. ``HF_HUB_OFFLINE`` keeps a cache miss from becoming a network call.
     """
-    real_hf_home = Path(os.environ["HOME"]) / ".cache" / "huggingface"
+    # Honour an explicit cache setting; only fall back to the default location.
+    real_hf_home = Path(
+        os.environ.get("HF_HOME") or Path(os.environ["HOME"]) / ".cache" / "huggingface"
+    )
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("HF_HOME", str(real_hf_home))
-    monkeypatch.setenv("SENTENCE_TRANSFORMERS_HOME", str(real_hf_home / "hub"))
+    monkeypatch.setenv(
+        "SENTENCE_TRANSFORMERS_HOME",
+        os.environ.get("SENTENCE_TRANSFORMERS_HOME") or str(real_hf_home / "hub"),
+    )
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
     monkeypatch.setenv("TQDM_DISABLE", "1")
     monkeypatch.setattr(Path, "home", lambda: home)

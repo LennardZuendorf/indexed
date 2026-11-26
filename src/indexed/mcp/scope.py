@@ -122,9 +122,16 @@ def scope_from_roots(roots: Iterable[Path]) -> RequestScope:
         # that costs the other collections' answer. Broken *files* still raise.
         strict=False,
     )
-    # ``load_selection`` cannot return None here: ``find_definition`` just
-    # found this very file from this very directory.
-    assert selection is not None
+    # ``find_definition`` just found this file from this directory; if it is gone
+    # already (a branch switch between discovery and resolution), fail closed with
+    # the scope error rather than serving an unscoped request.
+    if selection is None:
+        raise NoRequestScopeError(
+            f"Workspace definition '{definition}' disappeared while this request "
+            "was being resolved. Retry; if the definition is gone, commit one at "
+            "the repository root or connect the client from a repository that has "
+            "one."
+        )
     return RequestScope(
         selection=selection, collections_path=collections_path, roots=paths
     )

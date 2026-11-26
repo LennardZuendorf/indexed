@@ -116,8 +116,9 @@ there is no fallback to an unfiltered store and no fallback to an empty result.
   as the CLI.
 - The MCP server resolves the definition **per request** from the client's
   declared roots — see [mcp-request-scope](../mcp-request-scope/tech.md). It uses
-  this feature's discovery and resolver unchanged; it differs only in failing
-  closed when a request presents no definition.
+  this feature's discovery and resolver unchanged, and differs in two documented
+  ways: a request with no definition fails closed (product R4 is CLI-only), and an
+  explicit collection outside the selection is an error rather than R5's warning.
 - `indexed storage migrate` writes the definition at the worktree root instead
   of the pointer, and `--rollback` removes the entry it added (deleting the file
   when that entry was the only one).

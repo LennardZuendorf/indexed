@@ -1,5 +1,6 @@
 """MCP tool implementations for search operations."""
 
+import asyncio
 from typing import Any, Callable, Dict, List, Optional, get_args
 
 from fastmcp import Context
@@ -177,7 +178,14 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
         # ``configs=None`` and search the whole store, so two surfaces of one
         # project answered different questions.
         try:
-            statuses = svc_status(collections_path=collections_path)
+            # Off the event loop: status scans manifests and search is CPU/IO
+            # bound (FAISS + embeddings). One long-lived server serves many
+            # clients, so a blocking call here would stall every other request.
+            statuses = await asyncio.to_thread(
+                svc_status,
+                list(scope.selection.scope),
+                collections_path=collections_path,
+            )
         except IndexedError as e:
             return mcp_error_envelope(e)
         except Exception as e:  # noqa: BLE001 - MCP boundary never leaks a raw error
@@ -202,7 +210,8 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             # whole store would silently widen the scope. The payload says so.
             return build_search_payload({}, query, sources=declarations)
 
-        return _run_search(
+        return await asyncio.to_thread(
+            _run_search,
             query,
             configs,
             search_cfg,
@@ -267,7 +276,9 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
         collections_path = str(scope.collections_path)
 
         try:
-            statuses = svc_status([collection], collections_path=collections_path)
+            statuses = await asyncio.to_thread(
+                svc_status, [collection], collections_path=collections_path
+            )
         except IndexedError as e:
             return mcp_error_envelope(e)
         except Exception as e:  # noqa: BLE001 - MCP boundary must never leak a raw error
@@ -280,7 +291,8 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             return _unresolvable_collection_envelope(collection, collections_path)
         source_config = _source_config(collection, statuses[0])
 
-        return _run_search(
+        return await asyncio.to_thread(
+            _run_search,
             query,
             [source_config],
             search_cfg,

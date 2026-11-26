@@ -13,6 +13,7 @@ FastMCP v3 also rejects bare list/dict returns — a list is iterated as
 return a dict envelope so v3 serializes them as a single JSON content block.
 """
 
+import asyncio
 from typing import Any, Callable, Dict, List, Optional
 
 from fastmcp import Context
@@ -69,7 +70,7 @@ def _boundary_envelope(exc: Exception, context: str) -> Dict[str, Any]:
     return mcp_error_envelope(MCPError(f"Internal error: {exc}"))
 
 
-def _scoped_statuses(
+async def _scoped_statuses(
     scope: RequestScope, **status_kwargs: Any
 ) -> "tuple[Optional[List[Any]], Optional[List[Dict[str, Any]]], Optional[Dict[str, Any]]]":
     """The request's selected collections' statuses, in definition order.
@@ -78,10 +79,18 @@ def _scoped_statuses(
     Status is the surface an agent uses to check what it can see, so it applies
     exactly the scope search applies — and names a selected collection the store
     can no longer serve in ``sources`` instead of dropping it silently (#340).
+
+    The scan is asked for the request's own names (not the whole store) and runs
+    in a worker thread: this server answers many clients from one event loop.
     """
     collections_path = str(scope.collections_path)
     try:
-        statuses = svc_status(collections_path=collections_path, **status_kwargs)
+        statuses = await asyncio.to_thread(
+            svc_status,
+            list(scope.selection.scope),
+            collections_path=collections_path,
+            **status_kwargs,
+        )
     except Exception as e:  # noqa: BLE001 - MCP boundary must never leak a raw error
         return None, None, _boundary_envelope(e, "while listing collection statuses")
 
@@ -111,7 +120,7 @@ def register_resources(mcp: Any, get_mcp_config: Callable[[], Any]) -> None:
             scope = await resolve_request_scope(ctx)
         except IndexedError as e:
             return mcp_error_envelope(e)
-        statuses, declarations, error = _scoped_statuses(scope)
+        statuses, declarations, error = await _scoped_statuses(scope)
         if error is not None:
             return error
         return {
@@ -133,7 +142,7 @@ def register_resources(mcp: Any, get_mcp_config: Callable[[], Any]) -> None:
             scope = await resolve_request_scope(ctx)
         except IndexedError as e:
             return mcp_error_envelope(e)
-        statuses, declarations, error = _scoped_statuses(
+        statuses, declarations, error = await _scoped_statuses(
             scope, include_index_size=mcp_cfg.include_index_size, include_freshness=True
         )
         if error is not None:
@@ -159,7 +168,8 @@ def register_resources(mcp: Any, get_mcp_config: Callable[[], Any]) -> None:
             return mcp_error_envelope(e)
         collections_path = str(scope.collections_path)
         try:
-            statuses = svc_status(
+            statuses = await asyncio.to_thread(
+                svc_status,
                 [name],
                 include_index_size=mcp_cfg.include_index_size,
                 collections_path=collections_path,

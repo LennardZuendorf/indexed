@@ -51,12 +51,18 @@ BETA_NEEDLE = "heron rookery census along the tidal marsh"
 @pytest.fixture
 def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Point global storage (``~/.indexed``) at ``tmp_path/home`` (cf. #112)."""
-    real_hf_home = Path(os.environ["HOME"]) / ".cache" / "huggingface"
+    # Honour an explicit cache setting; only fall back to the default location.
+    real_hf_home = Path(
+        os.environ.get("HF_HOME") or Path(os.environ["HOME"]) / ".cache" / "huggingface"
+    )
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("HF_HOME", str(real_hf_home))
-    monkeypatch.setenv("SENTENCE_TRANSFORMERS_HOME", str(real_hf_home / "hub"))
+    monkeypatch.setenv(
+        "SENTENCE_TRANSFORMERS_HOME",
+        os.environ.get("SENTENCE_TRANSFORMERS_HOME") or str(real_hf_home / "hub"),
+    )
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
     monkeypatch.setenv("TQDM_DISABLE", "1")
     monkeypatch.setattr(Path, "home", lambda: home)
