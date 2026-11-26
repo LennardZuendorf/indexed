@@ -66,10 +66,17 @@ it needs `status()` and cannot live in the presentation layer):
 | `status().number_of_documents == 0`, or the engine opened an index holding zero vectors | `empty` (error added, `documents` stated as 0) |
 | otherwise answered | `ok` |
 
+The empty verdict is not a property of the declaration loop: a source the caller
+never declared (`--collection`, or any caller handing the engine a scope without
+declarations) is judged by the index the engine opened (`indexSize == 0`), so it
+becomes `empty` too — never `ok` with zero hits. `hits` is stated only for `ok`;
+a non-`ok` source carries `error` instead, because a hit count on a source that
+answered nothing invites the zero-hit misreading this field exists to stop.
+
 `hits` counts only what this query matched; `documents` is what the collection
 indexes. Collections the engine returned but the caller never declared (e.g. an
-explicit `--collection`) are appended as `ok`/`failed`, so `sources` is always a
-superset of `collections`.
+explicit `--collection`) are appended as `ok`/`empty`/`failed`, so `sources` is
+always a superset of `collections`.
 
 Every non-`ok` status also produces a `collection_errors` entry with the same
 wording, so consumers that predate `sources` and both renderers (`index search`
