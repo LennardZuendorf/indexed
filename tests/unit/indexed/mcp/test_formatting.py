@@ -359,7 +359,11 @@ def test_prose_document_gets_a_heading_path() -> None:
         {"headings": ["Search", "Output shape"]}, "file:///docs/search.md"
     )
 
-    assert locator == {"kind": "headings", "headings": ["Search", "Output shape"]}
+    assert locator == {
+        "kind": "headings",
+        "headings": ["Search", "Output shape"],
+        "path": "/docs/search.md",
+    }
 
 
 def test_empty_heading_path_is_document_not_an_empty_headings_locator() -> None:
@@ -368,7 +372,8 @@ def test_empty_heading_path_is_document_not_an_empty_headings_locator() -> None:
     not have, so it must fall through to ``document``; genuine headings survive
     the cleaning, and blank ones are dropped rather than kept."""
     assert build_locator({"headings": [""]}, "file:///docs/a.md") == {
-        "kind": "document"
+        "kind": "document",
+        "path": "/docs/a.md",
     }
     assert build_locator({"headings": ["", "   "]}, "") == {"kind": "document"}
     assert build_locator({"headings": ["", " Real "]}, "") == {
@@ -390,7 +395,10 @@ def test_chunk_without_any_position_says_document_not_a_fake_range() -> None:
     assert build_locator({}, "https://jira.example/T-1") == {"kind": "document"}
     assert build_locator(None, "") == {"kind": "document"}
     # A partial pair (start without end) is not a range either.
-    assert build_locator({"start_line": 4}, "file:///a.py") == {"kind": "document"}
+    assert build_locator({"start_line": 4}, "file:///a.py") == {
+        "kind": "document",
+        "path": "/a.py",
+    }
 
 
 def test_line_span_outranks_a_page_which_outranks_headings() -> None:
@@ -679,6 +687,34 @@ def test_skipped_git_rerank_becomes_a_collection_error() -> None:
             "error": "git re-ranking was not applied: no git repository could be "
             "resolved for the collection; results are ordered by similarity only",
         }
+    ]
+
+
+def test_skipped_git_provenance_becomes_a_collection_error() -> None:
+    """A v1 collection cannot attribute; the payload must not stay silent (M7)."""
+    raw = {
+        "c1": {
+            "collectionName": "c1",
+            "scoreKind": "l2_squared",
+            "results": [_doc("alpha", 0.9)],
+            "gitProvenance": {"applied": False, "reason": "v1-engine"},
+            "gitLineBlame": {"applied": False, "reason": "v1-engine"},
+        }
+    }
+
+    out = build_search_payload(raw, "q")
+
+    assert out["collection_errors"] == [
+        {
+            "collection": "c1",
+            "error": "git provenance was not applied: git provenance applies to "
+            "v2 collections only; results carry no commit attribution",
+        },
+        {
+            "collection": "c1",
+            "error": "git line blame was not applied: git line blame applies to "
+            "v2 collections only; hits carry no per-line attribution",
+        },
     ]
 
 

@@ -51,6 +51,13 @@ their best hit:
   collection in **both** arrays was searched and a requested Git option was
   skipped, so its rows are unfiltered/unranked — use them, don't discard them;
   only a collection absent from `collections` failed and contributed nothing
+- `sources` — one entry per source the request **meant** to search (the
+  workspace `indexed.toml` selection, or the one `--collection` name), in order,
+  each `{collection, source_type?, status, documents?, hits?, error?}`.
+  `status` is `ok`, `empty`, `missing`, `unusable` or `failed`; every non-`ok`
+  entry carries an `error` (mirrored in `collection_errors`). A dead or empty
+  source is named here instead of quietly vanishing — never read a zero-hit
+  `ok` and a `missing` source as the same thing
 - `documents[]` — each states `collection`, optional `source_type`, `id`, optional `path` /
   `url` and `score_kind` once
 - `documents[].hits[]` — `relevance` (higher is better, comparable across

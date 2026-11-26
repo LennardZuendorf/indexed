@@ -26,7 +26,12 @@ from ...utils.components import (
     print_warning,
 )
 from ...utils.components.theme import get_detail_card_width
-from indexed.utils.git_meta import filter_skip_message, rerank_skip_message
+from indexed.utils.git_meta import (
+    filter_skip_message,
+    line_blame_skip_message,
+    provenance_skip_message,
+    rerank_skip_message,
+)
 from indexed.utils.relevance import HIGHER_IS_BETTER, unified_relevance
 
 
@@ -231,6 +236,8 @@ def format_search_results(
     for key, message in (
         ("gitFilter", filter_skip_message),
         ("gitRerank", rerank_skip_message),
+        ("gitProvenance", provenance_skip_message),
+        ("gitLineBlame", line_blame_skip_message),
     ):
         skips = _git_option_skips(results, key)
         if skips:
@@ -496,6 +503,8 @@ def _show_all_results_compact(results: Dict[str, Any], limit: int) -> None:
     for key, message in (
         ("gitFilter", filter_skip_message),
         ("gitRerank", rerank_skip_message),
+        ("gitProvenance", provenance_skip_message),
+        ("gitLineBlame", line_blame_skip_message),
     ):
         skips = _git_option_skips(results, key)
         if skips:
@@ -585,6 +594,8 @@ def format_search_results_compact(
     for key, message in (
         ("gitFilter", filter_skip_message),
         ("gitRerank", rerank_skip_message),
+        ("gitProvenance", provenance_skip_message),
+        ("gitLineBlame", line_blame_skip_message),
     ):
         skips = _git_option_skips(results, key)
         if skips:

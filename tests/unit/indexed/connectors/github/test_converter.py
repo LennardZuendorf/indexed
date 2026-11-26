@@ -18,7 +18,14 @@ def _document(**overrides) -> dict:
         "labels": ["bug"],
         "author": "octocat",
         "kind": "issue",
-        "comments": [{"author": "reviewer", "body": "Can repro."}],
+        "comments": [
+            {
+                "id": "IC_kwDO_1",
+                "url": "https://github.com/octo/hello/issues/7#issuecomment-1",
+                "author": "reviewer",
+                "body": "Can repro.",
+            }
+        ],
         "project_fields": {},
     }
     base.update(overrides)
@@ -69,9 +76,12 @@ def test_comment_chunks_include_author():
         (result,) = list(converter.convert(_document()))
 
     comment_chunk = result["chunks"][-1]
-    assert "reviewer" in comment_chunk["indexedData"]
-    assert "Can repro." in comment_chunk["indexedData"]
+    # The comment's text is chunked like any other body, so the first chunk is
+    # bounded by the parser — but the author and the comment's own address stay
+    # on its metadata, which is what a citation needs (#340 R1).
     assert comment_chunk["metadata"]["commentAuthor"] == "reviewer"
+    assert comment_chunk["metadata"]["commentUrl"].endswith("#issuecomment-1")
+    assert "body text" in comment_chunk["indexedData"]
 
 
 def test_project_fields_attached_to_metadata():

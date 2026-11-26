@@ -219,7 +219,16 @@ def resolve_collections_context(
     mode_override: StorageMode | None = None,
     *,
     workspace: Path | None = None,
+    strict_selection: bool = True,
 ) -> CliContext:
+    """The one storage resolver for CLI, LSP and MCP.
+
+    ``strict_selection=False`` turns a definition entry whose collection has
+    vanished into ``selection.unresolved`` data instead of raising — the search
+    surfaces pass it, because a dead source must be *named* in the payload while
+    the other sources still answer (#340 R4). Every other command keeps the
+    fail-closed default.
+    """
     # A non-None mode_override forces a fresh ConfigService (via reload()) so a
     # runtime global→local switch is honored; get_config() otherwise reuses the
     # cached instance.
@@ -250,6 +259,7 @@ def resolve_collections_context(
             workspace_path,
             registry=CollectionRegistry(),
             collections_path=global_collections,
+            strict=strict_selection,
         )
 
     warnings: list[str] = []

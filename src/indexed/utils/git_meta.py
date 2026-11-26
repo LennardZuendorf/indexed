@@ -208,7 +208,13 @@ _SPAN_FIELDS = ("commit", "short", "author", "email", "committedAt", "subject")
 
 
 def _iso_time(epoch: str, tz: str) -> str:
-    """Porcelain's ``<epoch> <±HHMM>`` as the same ISO-8601 form git prints."""
+    """Porcelain's ``<epoch> <±HHMM>`` as the same ISO-8601 form git prints.
+
+    Byte-identical to ``git log --format=%cI`` for the same commit, including
+    the zero offset: git writes ``Z``, ``datetime.isoformat()`` writes
+    ``+00:00``. One commit must not carry two spellings of one instant in one
+    payload — document-level ``git.committedAt`` comes from ``%cI`` directly.
+    """
     try:
         offset_seconds = 0
         if len(tz) == 5 and tz[0] in "+-":
@@ -220,7 +226,8 @@ def _iso_time(epoch: str, tz: str) -> str:
         )
     except (TypeError, ValueError, OSError):
         return ""
-    return stamp.isoformat(timespec="seconds")
+    rendered = stamp.isoformat(timespec="seconds")
+    return rendered[:-6] + "Z" if offset_seconds == 0 else rendered
 
 
 def _parse_porcelain(out: str) -> List[Optional[Dict[str, Any]]]:
@@ -472,6 +479,38 @@ def rerank_skip_message(status: dict) -> str:
         "git re-ranking was not applied: "
         f"{_RERANK_SKIP_REASONS.get(reason, reason)}; "
         "results are ordered by similarity only"
+    )
+
+
+# Why a requested git annotation was not applied (dogfood M7). Same visible
+# degrade rule: a document without attribution says why it has none.
+_PROVENANCE_SKIP_REASONS = {
+    "v1-engine": "git provenance applies to v2 collections only",
+}
+
+
+def provenance_skip_message(status: dict) -> str:
+    """One line explaining a ``gitProvenance`` status that was not applied."""
+    reason = str(status.get("reason") or "unknown reason")
+    return (
+        "git provenance was not applied: "
+        f"{_PROVENANCE_SKIP_REASONS.get(reason, reason)}; "
+        "results carry no commit attribution"
+    )
+
+
+_LINE_BLAME_SKIP_REASONS = {
+    "v1-engine": "git line blame applies to v2 collections only",
+}
+
+
+def line_blame_skip_message(status: dict) -> str:
+    """One line explaining a ``gitLineBlame`` status that was not applied."""
+    reason = str(status.get("reason") or "unknown reason")
+    return (
+        "git line blame was not applied: "
+        f"{_LINE_BLAME_SKIP_REASONS.get(reason, reason)}; "
+        "hits carry no per-line attribution"
     )
 
 

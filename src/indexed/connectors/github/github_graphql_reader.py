@@ -248,6 +248,8 @@ class GitHubGraphQLReader:
         if self._include_comments:
             comments = [
                 {
+                    "id": c.get("id"),
+                    "url": c.get("url"),
                     "author": c["author"]["login"] if c.get("author") else None,
                     "body": c["body"],
                 }

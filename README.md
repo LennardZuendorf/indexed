@@ -65,12 +65,20 @@ which is why `counts.hits` says 2:
   "counts": { "documents": 1, "hits": 2 },
   "collections": ["docs-quick"],
   "collection_errors": [],
+  "sources": [
+    {
+      "collection": "docs-quick",
+      "source_type": "localFiles",
+      "status": "ok",
+      "hits": 2
+    }
+  ],
   "documents": [
     {
       "collection": "docs-quick",
       "source_type": "localFiles",
       "id": "retry.md",
-      "url": "file:///tmp/indexed-docs-quick/retry.md",
+      "path": "/var/lib/srv/hermes/profiles/prism/cache/scratch/docs-retry-min/retry.md",
       "score_kind": "l2_squared",
       "hits": [
         {
@@ -499,8 +507,11 @@ collections, and `indexed lsp` scopes `workspace/symbol`, hover and diagnostics
 the same way; `--collection NAME` still searches outside the list, with one
 warning line. Without the file nothing changes: every collection in the store is
 in scope. A malformed file, an unsupported `version`, or an entry that no longer
-resolves is an error naming the file and the entry — never a silent widening or
-emptying of the scope. `index create` does not edit the file: a collection
+resolves is never a silent widening or emptying of the scope: `index search`
+answers from the entries that still resolve and names the dead one per source in
+the payload (`sources[].status = "missing"`, with the file and the remedy), while
+every other command — LSP, storage, migration — stops with an error naming the
+file and the entry. `index create` does not edit the file: a collection
 created in a repo with a definition warns that it is outside the scope until you
 list it.
 
@@ -533,6 +544,10 @@ other source type is refused with **exit 2** — and it is **opt-in**: nothing s
 except typing the command, it runs in the foreground, and Ctrl-C is the off switch — no
 daemon, no service, no config flag. `--once` runs a single update pass and exits instead
 of watching.
+
+While it runs it prints one line per update it applies (`updated collection from N
+watched file(s)`) and one line when it picks up again after the source path went away —
+at the default log level, so an edit landing is visible without `-v`.
 
 If the watched directory disappears (unmounted drive, renamed folder), the watcher logs
 an error and **keeps the last good index** instead of updating against an empty tree; it

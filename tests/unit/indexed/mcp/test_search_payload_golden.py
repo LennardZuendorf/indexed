@@ -217,6 +217,9 @@ def _patch_search_command(monkeypatch) -> None:
         status = Mock()
         status.name = name
         status.indexers = ["default"]
+        # The reader type the store reports; the payload must state it without
+        # inventing anything (#340).
+        status.source_type = RAW_RESULTS[name]["sourceType"]
         statuses.append(status)
 
     def fake_svc_search(query, configs, **_kwargs):
@@ -350,6 +353,7 @@ def test_mcp_empty_store_is_the_success_shape_with_no_collections() -> None:
         "counts": {"documents": 0, "hits": 0},
         "collections": [],
         "collection_errors": [],
+        "sources": [],
         "documents": [],
     }
 

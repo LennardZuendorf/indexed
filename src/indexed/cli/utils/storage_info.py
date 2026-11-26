@@ -166,7 +166,9 @@ def display_storage_mode_for_command(console: Console) -> None:
 
     mode_override = get_context_mode_override()
 
-    cli_ctx = resolve_collections_context(mode_override=mode_override)
+    cli_ctx = resolve_collections_context(
+        mode_override=mode_override, strict_selection=False
+    )
     config_service = cli_ctx.config_service
     workspace = Path.cwd()
     local_exists = has_local_config(workspace)

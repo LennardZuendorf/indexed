@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-23
+updated: 2026-11-26
 ---
 
 # Lessons Learned
@@ -2517,3 +2517,52 @@ operator state produces *after* probing it, never from the stack you assume: the
 corruption path was already tolerated upstream.
 **Tags:** mcp, errors, spec
 **Date:** 2026-11-23
+
+### A long-running command is silent where its level filter is (2026-11-24)
+**Pattern:** `index watch` reported every applied update and every resume through
+`logger.info` while the CLI console level defaults to WARNING, so the command printed its
+banner and then nothing at all while it reindexed — and README's "it resumes when the path
+returns" had no observable event. Live: 24 s run with a real file edit at `dee739f1`,
+zero update lines; the same run with the progress routed to `console.print` shows two.
+The loop was already right — it takes injected `log_info`/`log_error` channels; only the
+CLI's mapping of the success channel was wrong.
+**Rule:** For any command a human watches, check which log level its success events use
+against the default console level — a progress event that only a `-v` reveals is a silent
+UI for every user who did not pass it. Put presentation in the caller (console AND log),
+keep the loop presentation-free, and assert the message on stdout in a test that runs at
+default verbosity, because a test that passes `-v` cannot see this defect.
+**Tags:** cli, logging, ux
+**Date:** 2026-11-24
+
+### A v1 collection answers a v2-only flag by doing nothing (2026-11-25)
+**Pattern:** `--git-provenance` and `--git-line-blame` on a v1 collection returned exit 0
+with rows, no git block, no warning and no payload status — byte-indistinguishable from
+"this file has no commit" — while the same collection under `--changed-since` exited 1 and
+under `--git-rerank` printed a per-collection warning stamped `gitRerank`. The README had
+already annotated all four flags "v2 files collections only"; only the code was silent.
+The fix is the third and fourth copy of a contract that already existed (dogfood M7).
+**Rule:** when an option is documented for one engine, the engine that cannot honour it
+must say so in the same place its siblings do — a status key on the collection result, a
+message helper in `git_meta`, one line in each renderer, one `collection_errors` entry on
+MCP. An option silently dropped is worse than one that errors: the rows look like an answer.
+**Tags:** cli, mcp, git, ux
+**Date:** 2026-11-25
+
+### One field, two producers, two spellings (2026-11-26)
+**Pattern:** `committedAt` is filled from two code paths that both claim ISO-8601:
+document-level from git's own `%cI`, hit-level from `datetime.isoformat()`. For a UTC
+commit git writes `2026-01-05T10:00:00Z` and Python writes `2026-01-05T10:00:00+00:00` —
+same instant, different bytes, so a consumer comparing or sorting the two surfaces sees
+two answers for one commit (dogfood M9). Every non-zero offset agreed, which is why
+`.startswith("2022-01-01")` passed for months.
+**Rule:** when two paths feed one contract field, the test asserts byte equality of their
+outputs, never a prefix — and the reference states the normalisation rule (here: zero
+offset is `Z`, exactly as `%cI`) instead of leaving it to whichever library runs last.
+**Tags:** git, contract, testing
+**Date:** 2026-11-26
+
+### A zero-hit answer is not evidence of an empty corpus (2026-11-26)
+**Pattern:** the search payload listed only what the engine answered (`collections`) and what it complained about (`collection_errors`), so a source that was deleted, never built, or whose index held zero vectors produced **no trace at all**. "Two sources answered" and "three were meant to, one died" were byte-identical, which would have made every later quality number quietly wrong (#340).
+**Rule:** a payload that aggregates sources states the *intended* scope beside the answered one, and a source that indexes nothing is never `ok` with zero hits. Detect emptiness from the index the search actually opened (`ntotal`), not only from the manifest — a half-rebuilt collection still claims documents it cannot match. And a locator that knows a path must keep it, or a prose hit cannot be opened at its file.
+**Tags:** search, contract, honesty
+**Date:** 2026-11-26

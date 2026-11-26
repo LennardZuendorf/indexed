@@ -12,28 +12,56 @@ stays the design record (issues #108/#109).
 Shape, in one breath: documents grouped, each stating its collection, source
 type, id, url, git provenance (when it was asked for and git answered) and
 score semantics ONCE; each hit carrying only its relevance, raw score, locator
-and text.
+and text — plus `sources`, one record per source the request *intended* to
+search saying whether it answered.
 
-Grouping was the point. The old flat payload repeated ``collection``,
-``document_id`` and ``document_url`` on every chunk and said nothing about
-WHERE the chunk sits — the two costs that made MCP output both bulky and
-unactionable.
+`sources` is the honesty half (issue #340). `collections` and
+`collection_errors` are derived from what the engine returned, so a source that
+was never built, whose index was deleted, or that indexes nothing used to leave
+no trace at all: "two sources answered" and "three were meant to, one died"
+looked identical. The builder never invents a source: callers pass the intended
+scope they resolved (see `indexed.cli.search_sources`), and an undeclared
+collection the engine did answer is appended as `ok` rather than hidden.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, cast
 
-from indexed.protocols.results import SEARCH_SCHEMA, Hit
-from indexed.utils.git_meta import filter_skip_message, rerank_skip_message
+from indexed.protocols.results import SEARCH_SCHEMA, Hit, SourceState, SourceStatus
+from indexed.utils.git_meta import (
+    filter_skip_message,
+    line_blame_skip_message,
+    provenance_skip_message,
+    rerank_skip_message,
+)
 from indexed.utils.provenance import build_locator, chunk_parts, strip_context_prefix
 from indexed.utils.relevance import V1_SCORE_KIND, unified_relevance
 
 #: Precision of emitted floats; ranking retains full precision internally.
 _SCORE_DECIMALS = 4
 
+#: ``sources`` is a per-source verdict, not a second document list: a record
+#: that is not ``ok`` always carries an ``error``, because a silent status is the
+#: failure this field exists to prevent.
+_NON_OK_STATUSES = frozenset({"empty", "missing", "unusable", "failed"})
 
-def build_search_payload(raw_results: Dict[str, Any], query: str) -> Dict[str, Any]:
+#: Fallback wording when a caller passes a verdict without an explanation. A
+#: status with no sentence beside it is the silence this field exists to remove.
+_STATUS_DEFAULT_ERROR = {
+    "empty": "indexes no documents, so nothing can match; re-run indexing for it.",
+    "missing": "is not in the store; re-create or re-index it.",
+    "unusable": "has no usable index; re-index it.",
+    "failed": "could not be searched.",
+}
+
+
+def build_search_payload(
+    raw_results: Dict[str, Any],
+    query: str,
+    *,
+    sources: Optional[Sequence[Mapping[str, Any]]] = None,
+) -> Dict[str, Any]:
     """Turn the core search result into the documented payload.
 
     ``raw_results`` maps collection name -> per-collection result, as returned
@@ -42,17 +70,35 @@ def build_search_payload(raw_results: Dict[str, Any], query: str) -> Dict[str, A
     ``scoreKind``. Collections arrive already fetched with matched-chunk
     content (``include_matched_chunks=True``), because the locator and the
     text both live in a chunk's ``content``/``metadata``.
+
+    ``sources`` is the *intended* scope, in order, as resolved by the caller
+    (``indexed.cli.search_sources.declare_sources``): ``{"collection": str,
+    "status"?, "source_type"?, "documents"?, "error"?}``. Absent means "no
+    intent beyond what the engine answered", which is what a test double and an
+    ad-hoc caller have; the answered collections then become the source list.
     """
     collection_errors: List[Dict[str, Any]] = []
     searched: List[str] = []
     freshness: List[Dict[str, Any]] = []
+    # Declarations decide a source's verdict when the engine cannot (missing,
+    # unusable, empty), so their error replaces the engine's lookalike one.
+    declared: Dict[str, Mapping[str, Any]] = {
+        str(entry["collection"]): entry for entry in sources or ()
+    }
     # (collection, document key) -> document payload under construction.
     documents: Dict[Tuple[str, str], Dict[str, Any]] = {}
     # Flat ranking list; grouping happens after the sort, so a document's
     # position reflects its BEST hit (v1 `__build_results` semantics).
     ranked: List[Tuple[float, Tuple[str, str], Hit]] = []
+    hits_per_collection: Dict[str, int] = {}
 
     for collection_name, collection_data in raw_results.items():
+        declaration = declared.get(collection_name)
+        if declaration is not None and declaration.get("status") in _NON_OK_STATUSES:
+            # The caller already knows why this one did not answer; its verdict
+            # and wording win over whatever the engine put in the dict.
+            continue
+
         if isinstance(collection_data, dict) and "error" in collection_data:
             collection_errors.append(
                 {"collection": collection_name, "error": collection_data["error"]}
@@ -83,6 +129,21 @@ def build_search_payload(raw_results: Dict[str, Any], query: str) -> Dict[str, A
                     "error": rerank_skip_message(git_rerank),
                 }
             )
+        # And for the two annotations (dogfood M7): a v1 collection returns no
+        # git block at all, so a requested provenance/blame that produced none
+        # must say why rather than read as "this file has no commit".
+        for status_key, message in (
+            ("gitProvenance", provenance_skip_message),
+            ("gitLineBlame", line_blame_skip_message),
+        ):
+            status = collection_data.get(status_key)
+            if isinstance(status, dict) and status.get("applied") is False:
+                collection_errors.append(
+                    {
+                        "collection": collection_name,
+                        "error": message(status),
+                    }
+                )
 
         verdict = collection_data.get("freshness")
         if isinstance(verdict, dict):
@@ -133,10 +194,23 @@ def build_search_payload(raw_results: Dict[str, Any], query: str) -> Dict[str, A
                     "locator": locator,
                     "text": strip_context_prefix(text, metadata),
                 }
+                # A comment has its own address under the issue: state it on the
+                # hit, because "the issue" would send a reader to the wrong place
+                # (#340 R1). Only when it says more than the document already does.
+                comment_url = metadata.get("commentUrl")
+                if (
+                    isinstance(comment_url, str)
+                    and comment_url
+                    and comment_url != doc_url
+                ):
+                    hit["url"] = comment_url
                 line_git = chunk_data.get("git")
                 if isinstance(line_git, dict):
                     hit["git"] = line_git
                 ranked.append((relevance, key, hit))
+                hits_per_collection[collection_name] = (
+                    hits_per_collection.get(collection_name, 0) + 1
+                )
 
     # Best first. Ties keep discovery order: sort is stable.
     ranked.sort(key=lambda item: item[0], reverse=True)
@@ -151,17 +225,115 @@ def build_search_payload(raw_results: Dict[str, Any], query: str) -> Dict[str, A
 
     documents_out = [_finalize_document(doc) for doc in ordered]
 
+    source_states = _build_sources(
+        sources=sources,
+        raw_results=raw_results,
+        collections=searched,
+        hits_per_collection=hits_per_collection,
+    )
+    # A source record that is not `ok` is an error the flat list must also name,
+    # so a consumer (or renderer) predating `sources` is never told less.
+    for state in source_states:
+        if state["status"] == "ok":
+            continue
+        collection_errors.append(
+            {"collection": state["collection"], "error": state.get("error", "")}
+        )
+
     payload = {
         "schema": SEARCH_SCHEMA,
         "query": query,
         "counts": {"documents": len(documents_out), "hits": len(ranked)},
         "collections": searched,
         "collection_errors": collection_errors,
+        "sources": source_states,
         "documents": documents_out,
     }
     if freshness:
         payload["freshness"] = freshness
     return payload
+
+
+def _build_sources(
+    *,
+    sources: Optional[Sequence[Mapping[str, Any]]],
+    raw_results: Dict[str, Any],
+    collections: List[str],
+    hits_per_collection: Dict[str, int],
+) -> List[SourceState]:
+    """One ``sources`` record per intended source, then any undeclared answerer.
+
+    The caller's declaration decides the verdict where it has one; otherwise the
+    engine's own answer does: an ``error`` entry is ``failed``, an answered
+    collection is ``ok``. A declared name the engine never mentioned was not
+    searched — it keeps the caller's ``missing``/``unusable`` and its error,
+    which is precisely the case that used to disappear.
+    """
+    states: List[SourceState] = []
+    seen: set[str] = set()
+    for declaration in sources or ():
+        name = str(declaration["collection"])
+        if name in seen:
+            continue
+        seen.add(name)
+        data = raw_results.get(name)
+        declared_status = declaration.get("status")
+        documents = declaration.get("documents")
+        if declared_status in _NON_OK_STATUSES:
+            status: SourceStatus = cast(SourceStatus, declared_status)
+        elif isinstance(data, dict) and "error" in data:
+            status = "failed"
+        else:
+            status = "ok"
+        # R3: a source that indexes nothing is NEVER `ok`. Two statements can
+        # say so, and either is enough: the manifest counts zero documents, or
+        # the index the engine just opened holds zero vectors (a partially
+        # rebuilt collection still claims documents it can no longer match).
+        index_size = data.get("indexSize") if isinstance(data, dict) else None
+        if status == "ok" and index_size == 0:
+            status = "empty"
+            documents = 0
+        elif status == "ok" and documents == 0:
+            status = "empty"
+
+        state: SourceState = {"collection": name, "status": status}
+        source_type = declaration.get("source_type") or (
+            data.get("sourceType") if isinstance(data, dict) else None
+        )
+        if source_type:
+            state["source_type"] = str(source_type)
+        if isinstance(documents, int):
+            state["documents"] = documents
+        if name in collections:
+            state["hits"] = hits_per_collection.get(name, 0)
+        if status != "ok":
+            engine_error = data.get("error") if isinstance(data, dict) else None
+            state["error"] = str(
+                declaration.get("error")
+                or engine_error
+                or f"Collection '{name}' {_STATUS_DEFAULT_ERROR[status]}"
+            )
+        states.append(state)
+
+    for name in collections:
+        if name in seen:
+            continue
+        seen.add(name)
+        hits = hits_per_collection.get(name, 0)
+        source_type = (raw_results.get(name) or {}).get("sourceType")
+        answered: SourceState
+        if source_type:
+            answered = {
+                "collection": name,
+                "source_type": str(source_type),
+                "status": "ok",
+                "hits": hits,
+            }
+        else:
+            answered = {"collection": name, "status": "ok", "hits": hits}
+        states.append(answered)
+
+    return states
 
 
 def _finalize_document(doc: Dict[str, Any]) -> Dict[str, Any]:
