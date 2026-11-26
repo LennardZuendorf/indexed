@@ -11,6 +11,13 @@ from loguru import logger
 
 from . import queries
 
+# Comment evidence budget. A thread page embeds its first 100 comments; each
+# further page is one follow-up request, so a document costs at most
+# MAX_COMMENT_PAGES comment pages (1000 comments). Past that the document is
+# marked `commentsTruncated` with the limit applied — never left silent.
+COMMENT_PAGE_SIZE = 100
+MAX_COMMENT_PAGES = 10
+
 
 class GitHubGraphQLError(Exception):
     """Raised when the GitHub GraphQL API returns an error response."""
@@ -239,23 +246,12 @@ class GitHubGraphQLReader:
             if not page_info["hasNextPage"]:
                 break
             after = page_info["endCursor"]
-        return documents
+        return await self._complete_comment_pages(client, semaphore, documents)
 
     def _issue_to_document(
         self, owner: str, name: str, node: dict, kind: str = "issue"
     ) -> dict:
-        comments = []
-        if self._include_comments:
-            comments = [
-                {
-                    "id": c.get("id"),
-                    "url": c.get("url"),
-                    "author": c["author"]["login"] if c.get("author") else None,
-                    "body": c["body"],
-                }
-                for c in node.get("comments", {}).get("nodes", [])
-            ]
-        return {
+        document = {
             "id": f"{owner}/{name}#{node['number']}",
             "url": node["url"],
             "modifiedTime": node["updatedAt"],
@@ -267,9 +263,80 @@ class GitHubGraphQLReader:
             ],
             "author": node["author"]["login"] if node.get("author") else None,
             "kind": kind,
-            "comments": comments,
+            "comments": [],
             "project_fields": {},
         }
+        if self._include_comments:
+            connection = node.get("comments") or {}
+            document["comments"] = [
+                self._comment_to_dict(c) for c in connection.get("nodes") or []
+            ]
+            page_info = connection.get("pageInfo") or {}
+            if page_info.get("hasNextPage"):
+                document["_nodeId"] = node.get("id")
+                document["_commentsCursor"] = page_info.get("endCursor")
+        return document
+
+    @staticmethod
+    def _comment_to_dict(comment: dict) -> dict:
+        return {
+            "id": comment.get("id"),
+            "url": comment.get("url"),
+            "author": comment["author"]["login"] if comment.get("author") else None,
+            "body": comment.get("body") or "",
+        }
+
+    async def _complete_comment_pages(
+        self,
+        client: "httpx.AsyncClient",
+        semaphore: asyncio.Semaphore,
+        documents: list[dict],
+    ) -> list[dict]:
+        """Follow the comment cursor past the first embedded page.
+
+        One request per extra page, capped at MAX_COMMENT_PAGES pages per
+        document; duplicates are skipped by comment id so an overlapping page
+        can never double-index a comment. A document still truncated at the cap
+        carries `commentsTruncated` and `commentsLimit` rather than looking
+        complete.
+        """
+        for document in documents:
+            cursor = document.pop("_commentsCursor", None)
+            node_id = document.pop("_nodeId", None)
+            if not cursor or not node_id:
+                continue
+            seen = {comment.get("id") for comment in document["comments"]}
+            pages = 1
+            has_next = True
+            while has_next and pages < MAX_COMMENT_PAGES:
+                data = await self._post_graphql(
+                    client,
+                    semaphore,
+                    queries.COMMENT_PAGE_QUERY,
+                    {"id": node_id, "first": COMMENT_PAGE_SIZE, "after": cursor},
+                )
+                connection = (data.get("node") or {}).get("comments")
+                if connection is None:
+                    break
+                for comment in connection.get("nodes") or []:
+                    comment_id = comment.get("id")
+                    if comment_id in seen:
+                        continue
+                    seen.add(comment_id)
+                    document["comments"].append(self._comment_to_dict(comment))
+                page_info = connection.get("pageInfo") or {}
+                has_next = bool(page_info.get("hasNextPage"))
+                cursor = page_info.get("endCursor")
+                pages += 1
+            if has_next:
+                document["commentsTruncated"] = True
+                document["commentsLimit"] = pages * COMMENT_PAGE_SIZE
+                logger.warning(
+                    f"GitHub: {document['id']} has more comments than the "
+                    f"{pages * COMMENT_PAGE_SIZE}-comment cap; indexing the "
+                    "first pages and marking the thread truncated"
+                )
+        return documents
 
     def _graphql_states(self) -> list[str] | None:
         if self._state == "all":
@@ -314,7 +381,7 @@ class GitHubGraphQLReader:
             if not page_info["hasNextPage"]:
                 break
             after = page_info["endCursor"]
-        return documents
+        return await self._complete_comment_pages(client, semaphore, documents)
 
     def _graphql_pr_states(self) -> list[str] | None:
         if self._state == "all":
@@ -385,7 +452,7 @@ class GitHubGraphQLReader:
             if not page_info["hasNextPage"]:
                 break
             after = page_info["endCursor"]
-        return documents
+        return await self._complete_comment_pages(client, semaphore, documents)
 
     def _project_item_to_document(self, node: dict) -> dict | None:
         content = node.get("content")

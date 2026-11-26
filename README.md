@@ -398,7 +398,7 @@ disappears keeps the last good index rather than emptying the collection.
 | **Jira** | Cloud and Server/Data Center with JQL filtering |
 | **Confluence** | Cloud and Server/Data Center with CQL filtering |
 | **Outline Wiki** | Cloud or self-hosted, with attachments and OCR |
-| **GitHub** | Issues, PR threads, and Projects v2 boards — github.com, GHE, or self-hosted GHES |
+| **GitHub** | Issues, PR threads, and Projects v2 boards — github.com, GHE, or self-hosted GHES; whole conversation (paginated past 100 comments, explicit truncation past 1000); project single-select and text fields |
 
 ## Installation
 

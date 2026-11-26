@@ -31,6 +31,11 @@ class GitHubDocumentConverter:
         }
         if document.get("project_fields"):
             src_meta["projectFields"] = document["project_fields"]
+        # Pagination cap reached: say so, with the limit applied, instead of
+        # presenting a partial thread as complete evidence (#356).
+        if document.get("commentsTruncated"):
+            src_meta["commentsTruncated"] = True
+            src_meta["commentsLimit"] = document.get("commentsLimit")
 
         chunks = [
             {"indexedData": self._build_header(document), "metadata": dict(src_meta)}

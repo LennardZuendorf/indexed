@@ -2600,3 +2600,15 @@ reachable through MCP without a selection and `--collection` — appeared only i
 from it, including sources the caller never declared. When two payload fields describe
 one fact, a test pins their count and wording equality, not just the presence of each.
 **Tags:** mcp, contract, honesty
+
+### A capped fetch is a silent evidence hole (2026-11-26)
+**Pattern:** the GitHub reader asked for `comments(first: 100)` and never looked at the
+connection's `pageInfo`, so comment 120 of a 150-comment issue was absent from the index
+and the payload said nothing — a search could cite the issue as covered while the answer
+sat past the cap.
+**Rule:** when a fetch has a limit, either page past it or stamp the applied limit into the
+payload (`commentsTruncated`/`commentsLimit`), and state the request ceiling in the spec so
+a test can assert it. A nested connection can never take a cursor inside a list selection —
+paginate it with a follow-up query addressed by node id, and dedupe by id so overlapping
+pages cannot double-index.
+**Tags:** connectors, evidence, honesty

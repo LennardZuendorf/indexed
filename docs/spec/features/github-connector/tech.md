@@ -3,7 +3,7 @@ type: feature-tech
 feature: github-connector
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-10-31
+updated: 2026-11-26
 ---
 
 # Feature: GitHub Projects & Issues Connector — Architecture
@@ -102,8 +102,10 @@ converter:
   "modifiedTime": "2026-06-20T10:00:00Z",   # issue.updatedAt — drives `since`
   "title": "...", "body": "...", "state": "OPEN",
   "labels": ["bug"], "author": "octo", "kind": "issue",   # issue | pull_request | draft
-  "comments": [{"author": "...", "body": "..."}, ...],
+  "comments": [{"id": "IC_x", "url": "...", "author": "...", "body": "..."}, ...],
   "project_fields": {"Status": "In Progress", "Priority": "P1"},  # when from a project
+  # present only when the comment-page cap was hit:
+  "commentsTruncated": True, "commentsLimit": 1000,
 }
 ```
 
@@ -163,9 +165,10 @@ rather than falling back to the config default.
 Async `httpx.AsyncClient` posting to `config.resolve_graphql_url()`,
 Bearer-authenticated. Three query families in `queries.py`:
 
-- **Issues** — `repository(owner,name){ issues(first:$n, after:$cur, filterBy:{since:$since}, states:$states, labels:$labels) { nodes { ...IssueFields comments(first:100){nodes{...}} } pageInfo{hasNextPage endCursor} } }`. One query returns issue + labels + comments; cursor-paginate on `pageInfo`.
+- **Issues** — `repository(owner,name){ issues(first:$n, after:$cur, filterBy:{since:$since}, states:$states, labels:$labels) { nodes { ...IssueFields comments(first:100){nodes{...} pageInfo{hasNextPage endCursor}} } pageInfo{hasNextPage endCursor} } }`. One query returns issue + labels + comments; cursor-paginate on `pageInfo`.
+- **Comment pages** — a GraphQL list selection cannot cursor a *nested* connection, so `comments(first:100)` in the issue/PR/project queries only ever returns the first page. `COMMENT_PAGE_QUERY` (`node(id:){ ... on Issue {...} ... on PullRequest {...} }`) fetches each further page by the thread's node id with `comments(after:)`. This is what makes comment 120 of a 150-comment issue indexable (#356).
 - **Pull requests** — analogous `pullRequests(...)` selection when `include_pull_requests`; conversation comments only (not review comments/review threads — see § Deferred).
-- **Project v2** — `organization(login:).projectV2(number:) { items(first,after){ nodes { content{ ... on Issue {...} ... on PullRequest {...} ... on DraftIssue {title body} } fieldValues(...) } } }`, with an identical `user(login:)` variant (`PROJECT_ITEMS_QUERY_USER`) tried when the organization probe fails. GitHub answers a user-owned project's `organization(login:)` probe with both `data.organization: null` AND a `NOT_FOUND` GraphQL error on `path=["organization"]`; `_is_organization_not_found()` recognizes that exact shape as "not an org, try the user query" rather than a hard failure — a naive `organization is None` check never reaches this branch because the reader's own error-array check raises first. `fieldValues` maps to `project_fields`. Project items resolve their backing `repository` so they index as repo documents; the reader **dedupes** by `id`, merging `project_fields` from whichever copy has them into the surviving document rather than pure first-wins, so a project item also matched via `repos` is emitted once with its board fields intact (R2 dedupe scenario). `get_number_of_documents()` and `read_all_documents()` both read from one cached, shared crawl (`_deduplicated_documents()`), so counting never re-runs the GraphQL fetch.
+- **Project v2** — `organization(login:).projectV2(number:) { items(first,after){ nodes { content{ ... on Issue {...} ... on PullRequest {...} ... on DraftIssue {title body} } fieldValues(...) } } }`, with an identical `user(login:)` variant (`PROJECT_ITEMS_QUERY_USER`) tried when the organization probe fails. GitHub answers a user-owned project's `organization(login:)` probe with both `data.organization: null` AND a `NOT_FOUND` GraphQL error on `path=["organization"]`; `_is_organization_not_found()` recognizes that exact shape as "not an org, try the user query" rather than a hard failure — a naive `organization is None` check never reaches this branch because the reader's own error-array check raises first. `fieldValues` maps to `project_fields`. Only two value types are requested — `ProjectV2ItemFieldSingleSelectValue` (the field's option `name`, e.g. Status, Priority) and `ProjectV2ItemFieldTextValue` (its `text`) — so number, date, iteration, milestone, labels and linked-PR fields are not indexed; product.md R2's requirement text states that limit. Project items resolve their backing `repository` so they index as repo documents; the reader **dedupes** by `id`, merging `project_fields` from whichever copy has them into the surviving document rather than pure first-wins, so a project item also matched via `repos` is emitted once with its board fields intact (R2 dedupe scenario). `get_number_of_documents()` and `read_all_documents()` both read from one cached, shared crawl (`_deduplicated_documents()`), so counting never re-runs the GraphQL fetch.
 
 Rate limiting: on HTTP 403/429 or a GraphQL `RATE_LIMITED` error, back off using
 `utils.retry` and the `X-RateLimit-Reset` hint; concurrency bounded by
@@ -173,6 +176,22 @@ Rate limiting: on HTTP 403/429 or a GraphQL `RATE_LIMITED` error, back off using
 with no rate-limit signal (a real permission/scope error) is not misclassified as
 rate-limiting. Heavy imports (`httpx`) are function/property-local, not
 module-level.
+
+**Comment pagination budget (#356).** `_issue_to_document()` keeps the embedded
+first page (100 comments) and remembers the thread's node id + `endCursor` when
+the connection's `pageInfo.hasNextPage` is true; `_complete_comment_pages()` then
+fetches one follow-up page per 100 further comments. Ceiling, stated once:
+`COMMENT_PAGE_SIZE = 100`, `MAX_COMMENT_PAGES = 10` — a thread costs at most 10
+comment pages (1000 comments) in total, the one embedded in its list page plus up
+to 9 follow-ups, so a 150-comment issue costs exactly
+`1 + ceil((150-100)/100) = 2` requests.
+Comments are appended through a `seen` id set, so an overlapping or shifted page
+cannot duplicate a comment. At the cap the document carries
+`commentsTruncated: True` and `commentsLimit: 1000` (pages × 100) instead of
+looking complete; the converter copies both onto every chunk of that document,
+which is how a search hit can tell it is citing a partial thread. A thread whose
+node disappears mid-crawl is likewise marked truncated rather than silently
+short.
 
 ### Converter via ParsingModule (R7)
 
@@ -254,7 +273,8 @@ Needs its own follow-up plan.
   not a top-level import).
 - A 1k-issue repo indexes within the existing connector envelope; GraphQL batching
   keeps it to ~`ceil(issues/100)` primary requests plus comment pagination only for
-  issues exceeding 100 comments.
+  issues exceeding 100 comments — at most `MAX_COMMENT_PAGES - 1` extra requests per
+  such issue (1000-comment cap), and zero for the common thread.
 
 ---
 
@@ -269,13 +289,12 @@ Needs its own follow-up plan.
   match what's shipped, with this noted as a known follow-up. Adding them is a
   `queries.py` field-selection change plus converter/test updates, not a
   redesign.
-- **`comments(first:100)` fetched unconditionally**, even when
-  `include_comments=False`, with no truncation detection past 100 comments (an
-  issue/PR with a 101st comment silently loses it). Flagged during the final
-  whole-branch review (finding I3) and explicitly parked as a follow-up — needs
-  a real query variant (skip the `comments` selection entirely) plus a
-  `hasNextPage`-aware truncation warning, scoped better as focused iteration
-  than a bundled fix.
+- **`comments(first:100)` on comment-less runs** — the `*_NO_COMMENTS` query
+  variants (issues, pull requests, project items) drop the `comments` selection
+  entirely when `include_comments=False`, so a count-only run spends no budget on
+  text the converter discards. Comments beyond the first 100 are now paginated
+  (§ GraphQL reader, #356); the residual cap at 1000 comments is reported as
+  `commentsTruncated`/`commentsLimit` on the document and its chunks.
 - **Endpoint derivation** — the three-way `host` rule (§ Endpoint resolution) is
   covered by unit tests; verify once against a live GHES and a `ghe.com` tenant,
   since none exist in CI.
