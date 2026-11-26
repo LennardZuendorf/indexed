@@ -380,7 +380,11 @@ class TestCollectionsListResourceFunction:
         assert resource is not None
         result = run_async(resource.fn(ctx=scoped("collection1", "collection2")))
 
-        assert result == {"collections": ["collection1", "collection2"]}
+        assert result["collections"] == ["collection1", "collection2"]
+        assert [source["collection"] for source in result["sources"]] == [
+            "collection1",
+            "collection2",
+        ]
 
     @patch.object(resources_module, "svc_status")
     def test_collections_list_handles_error(

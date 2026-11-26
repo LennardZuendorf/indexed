@@ -68,6 +68,15 @@ class Hit(TypedDict):
 
     locator: Locator
     text: str
+    url: NotRequired[str]
+    """Where this hit opens, when that is narrower than the document's ``url``.
+
+    Present for a hit that comes from a part of the document with its own
+    address — an issue comment, for instance: the document is the issue, the
+    hit is one comment under it. Omitted otherwise, so a consumer keeps using
+    the document's ``url``/``path`` and nothing repeats.
+    """
+
     git: NotRequired[Dict[str, Any]]
 
 
@@ -110,6 +119,43 @@ class CollectionError(TypedDict):
     error: str
 
 
+#: What became of one source this search intended to use.
+#:
+#: ``ok`` answered (zero matches for this query is still ``ok`` — see
+#: ``empty``); ``empty`` indexes no documents at all, so nothing could ever
+#: match; ``missing`` the workspace selection names it but the store does not
+#: have it; ``unusable`` present but has no usable index; ``failed`` the engine
+#: raised while searching it.
+SourceStatus = Literal["ok", "empty", "missing", "unusable", "failed"]
+
+
+class SourceState(TypedDict):
+    """One declared source and whether it answered this query.
+
+    ``sources`` exists so a payload can say *I was asked for three sources and
+    one of them did not answer*. Before it, ``collections`` (what answered) and
+    ``collection_errors`` (what complained) were both derived from the engine's
+    own dict, so a source that was never built or whose index vanished left no
+    trace — indistinguishable from a corpus that only ever had the others.
+    """
+
+    collection: str
+    source_type: NotRequired[str]
+    """The collection's reader type, when the store says (``github``,
+    ``localFiles``, …). Omitted when it is unknown — a missing source has none."""
+
+    status: SourceStatus
+    documents: NotRequired[int]
+    """Documents the collection indexes — not what this query matched. Absent
+    when the source could not be inspected."""
+
+    hits: NotRequired[int]
+    """Hits this query returned from the source; absent when it was not searched."""
+
+    error: NotRequired[str]
+    """Why the source is not ``ok``, naming the source and the remedy."""
+
+
 class SearchPayload(TypedDict):
     """The whole machine payload, for both surfaces."""
 
@@ -128,6 +174,13 @@ class SearchPayload(TypedDict):
     while a skipped git filter/re-rank leaves the collection in ``collections``
     with its rows unfiltered or similarity-ordered."""
 
+    sources: List[SourceState]
+    """One entry per collection this request intended to search, in scope
+    order, always present. A source that did not answer is ``missing``,
+    ``unusable``, ``empty`` or ``failed`` WITH an ``error`` — never silence, and
+    never a bare zero-hit result. Collections the engine answered but the caller
+    never declared are appended, so this is a superset of ``collections``."""
+
     documents: List[DocumentResult]
 
 
@@ -140,4 +193,6 @@ __all__ = [
     "Locator",
     "LocatorKind",
     "SearchPayload",
+    "SourceState",
+    "SourceStatus",
 ]

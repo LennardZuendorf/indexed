@@ -14,14 +14,11 @@ from indexed.core.engine import (
 from indexed.config.errors import IndexedError
 
 from indexed.cli.errors import MCPError, mcp_error_envelope
+from indexed.cli.search_sources import declare_sources, scope_of
 from .collection_errors import unresolvable_collection_error
 from .config import resolve_config as _resolve_config
 from .formatting import build_search_payload
-from .scope import (
-    RequestScope,
-    require_in_scope,
-    resolve_request_scope,
-)
+from .scope import require_in_scope, resolve_request_scope
 
 # Derived once from the SourceConfig Literal so the set stays in sync with the model.
 _ALLOWED_SOURCE_TYPES: frozenset[str] = frozenset(
@@ -35,6 +32,7 @@ def _run_search(
     search_cfg: Any,
     collections_path: str,
     *,
+    sources: Optional[List[Dict[str, Any]]] = None,
     changed_since: Optional[str] = None,
     git_provenance: Optional[bool] = None,
     git_line_blame: Optional[bool] = None,
@@ -79,7 +77,7 @@ def _run_search(
             collections_path=collections_path,
             **git_kwargs,
         )
-        return build_search_payload(raw_results, query)
+        return build_search_payload(raw_results, query, sources=sources)
     except IndexedError as e:
         return mcp_error_envelope(e)
     except Exception as e:  # noqa: BLE001 - MCP boundary must never leak a raw error
@@ -112,34 +110,6 @@ def _source_config(name: str, status: Any) -> SourceConfig:
         base_url_or_path="",
         indexer=status.indexers[0],
     )
-
-
-def _scoped_configs(
-    scope: RequestScope,
-) -> "tuple[Optional[List[SourceConfig]], Optional[Dict[str, Any]]]":
-    """Search configs for exactly the request's selected collections.
-
-    Returns ``(configs, None)`` or ``(None, error_envelope)``. A selected
-    collection the store can no longer serve is an error, never a silently
-    narrower search: the definition named it, so the answer is about it.
-    """
-    collections_path = str(scope.collections_path)
-    try:
-        statuses = svc_status(collections_path=collections_path)
-    except IndexedError as e:
-        return None, mcp_error_envelope(e)
-    except Exception as e:  # noqa: BLE001 - MCP boundary must never leak a raw error
-        logger.exception("Unexpected error while resolving the request's scope")
-        return None, mcp_error_envelope(MCPError(f"Internal error: {e}"))
-
-    by_name = {status.name: status for status in statuses}
-    configs: List[SourceConfig] = []
-    for name in scope.names:
-        status = by_name.get(name)
-        if status is None or not status.indexers:
-            return None, _unresolvable_collection_envelope(name, collections_path)
-        configs.append(_source_config(name, status))
-    return configs, None
 
 
 def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
@@ -199,15 +169,45 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             scope = await resolve_request_scope(ctx)
         except IndexedError as e:
             return mcp_error_envelope(e)
-        configs, error = _scoped_configs(scope)
-        if error is not None:
-            return error
+        collections_path = str(scope.collections_path)
+
+        # The request's definition is the intended scope (#340/#345): declare it
+        # first, answer from every selected collection the store can serve, and
+        # let the payload name the ones it cannot. MCP used to pass
+        # ``configs=None`` and search the whole store, so two surfaces of one
+        # project answered different questions.
+        try:
+            statuses = svc_status(collections_path=collections_path)
+        except IndexedError as e:
+            return mcp_error_envelope(e)
+        except Exception as e:  # noqa: BLE001 - MCP boundary never leaks a raw error
+            logger.exception("Unexpected error resolving the request's scope")
+            return mcp_error_envelope(MCPError(f"Internal error: {e}"))
+
+        scope_names, unresolved = scope_of(scope.selection, statuses)
+        declarations = declare_sources(
+            names=scope_names, statuses=statuses, unresolved=unresolved
+        )
+        by_name = {status.name: status for status in statuses}
+        configs: List[SourceConfig] = []
+        for declaration in declarations:
+            if "status" in declaration:
+                continue
+            status = by_name.get(str(declaration["collection"]))
+            if status is None or not status.indexers:
+                continue
+            configs.append(_source_config(str(declaration["collection"]), status))
+        if not configs:
+            # Every selected source is gone or unusable: answering from the
+            # whole store would silently widen the scope. The payload says so.
+            return build_search_payload({}, query, sources=declarations)
 
         return _run_search(
             query,
             configs,
             search_cfg,
-            str(scope.collections_path),
+            collections_path,
+            sources=declarations,
             changed_since=changed_since,
             git_provenance=git_provenance,
             git_line_blame=git_line_blame,
@@ -285,6 +285,7 @@ def register_tools(mcp: Any, get_search_config: Callable[[], Any]) -> None:
             [source_config],
             search_cfg,
             collections_path,
+            sources=declare_sources(names=[collection], statuses=statuses),
             changed_since=changed_since,
             git_provenance=git_provenance,
             git_line_blame=git_line_blame,

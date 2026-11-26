@@ -3,7 +3,7 @@ type: feature-plan
 feature: workspace-selection
 sibling: tech.md
 parent: ../../plan.md
-updated: 2026-11-22
+updated: 2026-11-26
 ---
 
 # Feature: Workspace Selection — Plan
@@ -42,7 +42,7 @@ safe to land together.
 |---|---|
 | R1 two clones, one selection | `tests/unit/indexed/config/test_workspace_selection.py::test_two_clones_resolve_the_same_selection`; `tests/system/test_collection_registry.py::test_two_workspaces_reuse_one_collection` |
 | R2 selection, not a store | `::test_definition_writes_nothing_into_the_workspace` |
-| R3 fails closed | `::test_read_definition_is_loud` (parametrised: missing/unsupported version, no entries, bad entry), `::test_unknown_name_names_the_file_and_entry`, `::test_unknown_stable_id_is_loud`, `::test_registered_but_missing_data_is_loud`, `::test_duplicate_entry_is_loud`, `tests/unit/indexed/test_runtime_context.py::test_definition_fails_closed_on_an_unresolvable_entry`, `tests/unit/indexed/knowledge/commands/test_search.py::TestWorkspaceSelectionScope::test_a_selected_collection_that_vanished_fails_closed` |
+| R3 fails closed | `::test_read_definition_is_loud` (parametrised: missing/unsupported version, no entries, bad entry), `::test_unknown_name_names_the_file_and_entry`, `::test_unknown_stable_id_is_loud`, `::test_registered_but_missing_data_is_loud`, `::test_duplicate_entry_is_loud`, `tests/unit/indexed/test_runtime_context.py::test_definition_fails_closed_on_an_unresolvable_entry`, `tests/unit/indexed/knowledge/commands/test_search.py::TestWorkspaceSelectionScope::test_a_selected_collection_that_vanished_is_named_and_the_rest_search` (search now names it per source instead of exiting — [project-search](../project-search/product.md) R4) |
 | R4 absence means no scope | `tests/unit/indexed/test_runtime_context.py::test_resolve_collections_context_local_mode`, `tests/unit/indexed/knowledge/commands/test_search.py::TestWorkspaceSelectionScope::test_no_selection_searches_every_collection`, `tests/unit/indexed/lsp/test_backend_selection.py::test_no_selection_leaves_statuses_unfiltered` |
 | R5 explicit collection wins, loudly | `TestWorkspaceSelectionScope::test_out_of_selection_collection_warns_and_runs`, `::test_out_of_selection_warning_stays_off_json_stdout` |
 | Precedence | `tests/unit/indexed/test_runtime_context.py::test_definition_selects_the_global_store_from_local_mode`, `::test_definition_beats_the_legacy_pointer`, `::test_legacy_pointer_still_routes_and_warns` |

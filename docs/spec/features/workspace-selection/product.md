@@ -3,7 +3,7 @@ type: feature-product
 feature: workspace-selection
 sibling: tech.md
 parent: ../../product.md
-updated: 2026-11-22
+updated: 2026-11-26
 ---
 
 # Feature: Workspace Selection — Product
@@ -40,7 +40,11 @@ repository search the same collections without any per-clone setup.
 - **R3 — Resolution fails closed and loud.** A malformed file, an unsupported
   version, or a reference that no longer resolves is an error naming the file,
   the offending entry and the remedy. It never silently widens to the whole
-  store, and it never silently narrows to nothing.
+  store, and it never silently narrows to nothing. *(Amended 2026-11-26 by
+  [project-search](../project-search/product.md) R4: for `index search` a
+  reference that no longer resolves is reported per source in the payload —
+  named, with its remedy — while the other sources still answer; every other
+  command keeps the fatal error. Broken files stay fatal everywhere.)*
 - **R4 — Absence means no scope.** A directory with no definition behaves
   exactly as before: every collection in the resolved store is searched. A
   user who never writes the file loses nothing.

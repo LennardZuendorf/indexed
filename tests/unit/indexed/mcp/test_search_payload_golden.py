@@ -184,7 +184,10 @@ def test_mcp_search_tool_returns_the_golden_payload(
         patch.object(
             tools_module,
             "svc_status",
-            return_value=[mcp_status("indexed-src"), mcp_status("notes-v2")],
+            return_value=[
+                mcp_status("indexed-src", number_of_documents=None),
+                mcp_status("notes-v2", source_type="outline", number_of_documents=None),
+            ],
         ),
         patch.object(server_module, "_get_config", return_value=search_cfg),
     ):
@@ -235,6 +238,9 @@ def _patch_search_command(monkeypatch) -> None:
         status = Mock()
         status.name = name
         status.indexers = ["default"]
+        # The reader type the store reports; the payload must state it without
+        # inventing anything (#340).
+        status.source_type = RAW_RESULTS[name]["sourceType"]
         statuses.append(status)
 
     def fake_svc_search(query, configs, **_kwargs):
@@ -360,22 +366,25 @@ def test_mcp_empty_store_is_the_success_shape_with_no_collections(
     """An empty store is NOT an error envelope on MCP (the CLI reports one): the
     tool returns the success payload with `collections: []`, which is how a
     consumer tells "nothing was searched" from "searched, nothing matched"
-    (docs/spec/tech/app/app-search-result-bodies.md)."""
+    (docs/spec/tech/app/app-search-result-bodies.md).
+
+    The selected name still appears in ``sources`` — with #340 a scope never
+    shrinks to silence — carrying the store's verdict on it."""
     with (
         patch.object(tools_module, "svc_search", return_value={}),
-        patch.object(tools_module, "svc_status", return_value=[mcp_status("col")]),
+        patch.object(tools_module, "svc_status", return_value=[]),
         patch.object(server_module, "_get_config", return_value=_search_config()),
     ):
         payload = run_async(_mcp_search_tool().fn(QUERY, ctx=scoped("col")))
 
-    assert payload == {
-        "schema": "indexed.search/1",
-        "query": QUERY,
-        "counts": {"documents": 0, "hits": 0},
-        "collections": [],
-        "collection_errors": [],
-        "documents": [],
-    }
+    assert "error" not in payload
+    assert payload["schema"] == "indexed.search/1"
+    assert payload["counts"] == {"documents": 0, "hits": 0}
+    assert payload["collections"] == []
+    assert payload["documents"] == []
+    assert [source["collection"] for source in payload["sources"]] == ["col"]
+    assert payload["sources"][0]["status"] == "unusable"
+    assert payload["sources"][0]["error"]
 
 
 def test_mcp_search_collection_unknown_is_a_bare_error_body(

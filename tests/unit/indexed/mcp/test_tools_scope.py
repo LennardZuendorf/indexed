@@ -142,23 +142,28 @@ class _Statuses:
         return [_status(n) for n in self.names]
 
 
-def test_an_unresolvable_definition_entry_is_an_envelope(
-    home: Path, tmp_path: Path
+def test_an_unresolvable_definition_entry_is_declared_missing(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The definition names a collection the store no longer serves (#345).
+    """The definition names a collection the store no longer serves (#340/#345).
 
-    ``load_selection`` raises ``WorkspaceSelectionError``; the tool boundary must
-    turn that into the documented envelope, never a protocol error an agent
-    cannot read.
+    The entry is in the request's scope, so the payload declares it as a
+    ``missing`` source and answers nothing from the rest — never an empty success
+    with no trace, and never a search of the whole store.
     """
     _store(home, "beta-docs")
     repo = _repo(tmp_path, "alpha-docs")
+    monkeypatch.setattr(tools_module, "svc_status", _Statuses("beta-docs"))
+    monkeypatch.setattr(
+        tools_module, "svc_search", lambda *a, **k: pytest.fail("engine was called")
+    )
 
     result = _call(_tool("search").fn, "query", ctx=_ctx(repo))
 
-    assert result["type"] == "WorkspaceSelectionError"
-    assert "alpha-docs" in result["error"]
-    assert "documents" not in result
+    assert result["collections"] == []
+    assert [source["collection"] for source in result["sources"]] == ["alpha-docs"]
+    assert result["sources"][0]["status"] == "missing"
+    assert "alpha-docs" in result["sources"][0]["error"]
 
 
 # --- search ------------------------------------------------------------------
@@ -197,23 +202,27 @@ def test_search_sends_only_the_selected_collections_to_the_engine(
     assert "type" not in result
 
 
-def test_search_fails_closed_when_a_selected_collection_is_unusable(
+def test_a_selected_collection_with_no_status_is_declared_unusable(
     home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Status omits a selected collection (its manifest went unreadable).
+
+    The scope is served whole or not at all for that source: the payload names it
+    ``unusable`` and never quietly searches nothing (#340 R2).
+    """
     _store(home, "alpha-docs")
     repo = _repo(tmp_path, "alpha-docs")
-    # The collection is registered but the manifest is unreadable now: status
-    # omits it, so the search must report, never quietly search fewer.
     monkeypatch.setattr(tools_module, "svc_status", _Statuses("beta-docs"))
-    monkeypatch.setattr(tools_module, "svc_search", lambda *a, **k: {})
     monkeypatch.setattr(
-        "indexed.mcp.collection_errors.svc_collection_exists", lambda *a, **k: True
+        tools_module, "svc_search", lambda *a, **k: pytest.fail("engine was called")
     )
 
     result = _call(_tool("search").fn, "query", ctx=_ctx(repo))
 
-    assert "error" in result
-    assert "alpha-docs" in result["error"]
+    assert result["collections"] == []
+    assert [source["collection"] for source in result["sources"]] == ["alpha-docs"]
+    assert result["sources"][0]["status"] == "unusable"
+    assert "alpha-docs" in result["sources"][0]["error"]
 
 
 def test_search_collection_outside_the_scope_is_an_error(
@@ -268,7 +277,8 @@ def test_collections_resource_lists_only_the_selection(
 
     result = _read("resource://collections", _ctx(repo))
 
-    assert result == {"collections": ["alpha-docs"]}
+    assert result["collections"] == ["alpha-docs"]
+    assert [source["collection"] for source in result["sources"]] == ["alpha-docs"]
 
 
 def test_status_resource_agrees_with_search_in_definition_order(

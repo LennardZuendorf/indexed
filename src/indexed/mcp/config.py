@@ -63,7 +63,7 @@ def resolve_cli_context(ctx: Optional[Any]) -> CliContext:
     if val is not _MISSING:
         return val
     try:
-        return resolve_collections_context()
+        return resolve_collections_context(strict_selection=False)
     except Exception as exc:
         logger.warning(f"Failed to resolve CLI context, using default: {exc}")
         return default_global_context()

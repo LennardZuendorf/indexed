@@ -22,6 +22,7 @@ from indexed.core.engine import status as svc_status
 from indexed.config.errors import IndexedError
 
 from indexed.cli.errors import MCPError, mcp_error_envelope
+from indexed.cli.search_sources import declare_sources, scope_of
 from .collection_errors import unresolvable_collection_error
 from .config import resolve_config as _resolve_config
 from .scope import RequestScope, require_in_scope, resolve_request_scope
@@ -70,30 +71,31 @@ def _boundary_envelope(exc: Exception, context: str) -> Dict[str, Any]:
 
 def _scoped_statuses(
     scope: RequestScope, **status_kwargs: Any
-) -> "tuple[Optional[List[Any]], Optional[Dict[str, Any]]]":
+) -> "tuple[Optional[List[Any]], Optional[List[Dict[str, Any]]], Optional[Dict[str, Any]]]":
     """The request's selected collections' statuses, in definition order.
 
-    Returns ``(statuses, None)`` or ``(None, envelope)``. Status is the surface an
-    agent uses to check what it can see, so it applies exactly the scope search
-    applies — a selected collection the store no longer serves is reported,
-    never dropped from the list.
+    Returns ``(statuses, declarations, None)`` or ``(None, None, envelope)``.
+    Status is the surface an agent uses to check what it can see, so it applies
+    exactly the scope search applies — and names a selected collection the store
+    can no longer serve in ``sources`` instead of dropping it silently (#340).
     """
     collections_path = str(scope.collections_path)
     try:
         statuses = svc_status(collections_path=collections_path, **status_kwargs)
     except Exception as e:  # noqa: BLE001 - MCP boundary must never leak a raw error
-        return None, _boundary_envelope(e, "while listing collection statuses")
+        return None, None, _boundary_envelope(e, "while listing collection statuses")
 
+    names, unresolved = scope_of(scope.selection, statuses)
+    declarations = declare_sources(
+        names=names, statuses=statuses, unresolved=unresolved
+    )
     by_name = {status.name: status for status in statuses}
-    selected: List[Any] = []
-    for name in scope.names:
-        status = by_name.get(name)
-        if status is None:
-            return None, unresolvable_collection_error(
-                name, collections_path, f"Collection '{name}' not found"
-            )
-        selected.append(status)
-    return selected, None
+    selected = [
+        by_name[str(declaration["collection"])]
+        for declaration in declarations
+        if "status" not in declaration
+    ]
+    return selected, declarations, None
 
 
 def register_resources(mcp: Any, get_mcp_config: Callable[[], Any]) -> None:
@@ -109,10 +111,13 @@ def register_resources(mcp: Any, get_mcp_config: Callable[[], Any]) -> None:
             scope = await resolve_request_scope(ctx)
         except IndexedError as e:
             return mcp_error_envelope(e)
-        statuses, error = _scoped_statuses(scope)
+        statuses, declarations, error = _scoped_statuses(scope)
         if error is not None:
             return error
-        return {"collections": [s.name for s in statuses or []]}
+        return {
+            "collections": [s.name for s in statuses or []],
+            "sources": declarations,
+        }
 
     @mcp.resource(
         "resource://collections/status",
@@ -128,12 +133,15 @@ def register_resources(mcp: Any, get_mcp_config: Callable[[], Any]) -> None:
             scope = await resolve_request_scope(ctx)
         except IndexedError as e:
             return mcp_error_envelope(e)
-        statuses, error = _scoped_statuses(
+        statuses, declarations, error = _scoped_statuses(
             scope, include_index_size=mcp_cfg.include_index_size, include_freshness=True
         )
         if error is not None:
             return error
-        return {"collections": [_format_status(s) for s in statuses or []]}
+        return {
+            "collections": [_format_status(s) for s in statuses or []],
+            "sources": declarations,
+        }
 
     @mcp.resource(
         "resource://collection/{name}",

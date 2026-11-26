@@ -1,6 +1,6 @@
 ---
 type: tech
-updated: 2026-11-25
+updated: 2026-11-26
 applies: ["src/indexed/mcp/**", src/indexed/protocols/results.py]
 ---
 
@@ -10,6 +10,19 @@ applies: ["src/indexed/mcp/**", src/indexed/protocols/results.py]
   `url` and `score_kind` belong to the document; only `relevance`, `score`, `locator`
   and `text` repeat per hit. Repeating `collection`/`document_id`/`document_url` on
   every chunk was most of the old payload's token cost.
+- **`sources` states intent; `collections` states what answered.** One record per
+  collection the request meant to search (the workspace selection's scope, or the one
+  name `--collection` asked for), in that order, each with `status` ∈ `ok | empty |
+  missing | unusable | failed`. `collections` remains the answered scope, so a
+  consumer that predates this key is not misled — but `sources` is a superset of it
+  and every non-`ok` record also produces a `collection_errors` entry with the same
+  wording. `empty` (the manifest counts no documents, or the index the engine opened
+  holds no vectors) is never reported as `ok` with zero hits: that silence is the
+  failure the field exists to remove (#340).
+- **A hit may be narrower than its document.** `Hit.url` (optional) is present only
+  when the hit resolves to something more specific than the document — an issue
+  comment under its issue, for example — so a citation opens the comment, not the
+  thread. Hits from any other part keep using the document's `url`/`path`.
 - **A locator is honest.** `kind` is `line_span` (1-based inclusive lines — what
   `grep -n` prints — plus the file when the document states no `path`), `page`
   (positive page metadata, when supplied), `headings` (prose:

@@ -321,15 +321,12 @@ def test_one_long_lived_process_tracks_rebuild_then_corruption(
         assert new[key] == payload["new_disk"][key], payload
     assert "heron" in _texts(payload["new_search"]), payload
 
-    # 3. removal fails closed while the definition still names the collection:
-    #    the definition and the store disagree, so nothing is served at all —
-    #    a typed envelope, never a protocol error and never an empty success.
-    assert payload["gone_failed"]["type"] == "WorkspaceSelectionError", payload[
-        "gone_failed"
-    ]
+    # 3. a selected collection the store removed is answered per source: the
+    #    definition still names it, so the request is scoped to it and the store
+    #    says it is not there — never a silent empty success (#340).
     failure = payload["gone_failed"]["error"]
     assert NEW_COLLECTION in failure, failure
-    assert str(store) in failure, failure
+    assert "documents" not in payload["gone_failed"], payload["gone_failed"]
 
     #    Once the definition is corrected the same name is outside the scope.
     assert payload["gone_list"]["collections"] == [COLLECTION], payload
@@ -351,11 +348,18 @@ def test_one_long_lived_process_tracks_rebuild_then_corruption(
     assert "heron" not in _texts(payload["recreated_search"]), payload
     assert "heron" not in _texts(payload["stale_search"]), payload
 
-    # 5. corruption is a failure, not a miss and not a typo hint. The scope is
-    #    served whole or not at all: an unreadable selected collection fails the
-    #    scoped search rather than silently answering from its healthy sibling.
+    # 5. corruption is a failure, not a miss and not a typo hint. A scoped search
+    #    degrades per source (#340): the healthy collection still answers, and the
+    #    corrupted one is named — never silently dropped from the scope.
     assert "error" in payload["single"], payload
     assert "not found" not in str(payload["single"]["error"]).lower()
-    assert "error" in payload["every"], payload
-    assert COLLECTION in str(payload["every"]["error"]), payload
-    assert "documents" not in payload["every"], payload
+    every = payload["every"]
+    assert set(every["collections"]) == {NEW_COLLECTION}, every
+    assert [entry["collection"] for entry in every["collection_errors"]] == [
+        COLLECTION
+    ], every
+    corrupt = next(
+        source for source in every["sources"] if source["collection"] == COLLECTION
+    )
+    assert corrupt["status"] in {"unusable", "failed"}, every
+    assert COLLECTION in corrupt["error"], every

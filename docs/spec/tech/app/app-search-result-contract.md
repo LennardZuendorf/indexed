@@ -1,6 +1,6 @@
 ---
 type: tech
-updated: 2026-11-22
+updated: 2026-11-26
 applies: ["src/indexed/mcp/**", src/indexed/protocols/results.py]
 ---
 
@@ -23,6 +23,12 @@ provenance shape.
   "counts": {"documents": 1, "hits": 1},
   "collections": ["indexed-src", "notes-v2"],
   "collection_errors": [{"collection": "jira", "error": "…"}],
+  "sources": [
+    {"collection": "indexed-src", "source_type": "localFiles", "status": "ok",
+     "documents": 42, "hits": 3},
+    {"collection": "jira", "status": "missing",
+     "error": "Workspace definition '/repo/indexed.toml' selects collection 'jira', which is not in the store at '…'."}
+  ],
   "documents": [
     {
       "collection": "indexed-src",

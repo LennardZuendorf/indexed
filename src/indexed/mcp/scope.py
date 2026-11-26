@@ -117,6 +117,10 @@ def scope_from_roots(roots: Iterable[Path]) -> RequestScope:
         definition.parent,
         registry=CollectionRegistry(),
         collections_path=collections_path,
+        # A search degrades per source (#340): a definition entry the store can
+        # no longer serve is reported as a `missing` source, not as a failure
+        # that costs the other collections' answer. Broken *files* still raise.
+        strict=False,
     )
     # ``load_selection`` cannot return None here: ``find_definition`` just
     # found this very file from this very directory.
@@ -168,10 +172,16 @@ async def resolve_request_scope(ctx: Any) -> RequestScope:
 
 
 def require_in_scope(scope: RequestScope, name: str) -> None:
-    """Raise unless ``name`` is selected by the request's definition."""
-    if name in scope.selection:
+    """Raise unless ``name`` is selected by the request's definition.
+
+    Membership is judged on the *intended* scope (``selection.scope``), so a name
+    the definition lists but the store no longer serves is in scope — it then
+    reaches the store and is reported as unusable/missing, which is the true
+    problem, instead of being called someone else's collection.
+    """
+    if name in scope.selection.scope:
         return
-    selected = ", ".join(f"'{entry}'" for entry in scope.names)
+    selected = ", ".join(f"'{entry}'" for entry in scope.selection.scope)
     raise CollectionOutsideScopeError(
         f"Collection '{name}' is outside this request's workspace scope: "
         f"'{scope.selection.path}' selects {selected}. Ask the user to add it "

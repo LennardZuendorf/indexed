@@ -706,3 +706,125 @@ def outline_source(monkeypatch: pytest.MonkeyPatch):
         needle_id="doc-b",
         needle_query="nightly job pre-warm recommendation feature store cold cache stampede",
     )
+
+
+# ---------------------------------------------------------------------------
+# Seeded collections (no model, no network)
+# ---------------------------------------------------------------------------
+
+
+def seed_v1_collection(
+    collections_dir: Path,
+    name: str,
+    *,
+    reader_type: str = "localFiles",
+    documents: list[dict],
+    indexer: str = DEFAULT_INDEXER_NAME,
+    dimension: int = 384,
+) -> Path:
+    """Write a complete v1 collection on disk, with no embedding model.
+
+    Lifted from the benchmark fixture in ``tests/system/test_search_performance``
+    so payload-level tests can build several collections quickly. ``documents``
+    carry the converter's own yield shape (``id``/``url``/``text``/``chunks``),
+    which means a test can index the *real* chunker's output without a model:
+    only the query vector is stubbed (see ``stub_sentence_embedder``).
+    """
+    import json
+
+    import faiss
+    import numpy as np
+
+    collection_dir = Path(collections_dir) / name
+    indexer_dir = collection_dir / "indexes" / indexer
+    docs_dir = collection_dir / "documents"
+    indexer_dir.mkdir(parents=True, exist_ok=True)
+    docs_dir.mkdir(parents=True, exist_ok=True)
+
+    mapping: dict[str, dict] = {}
+    total_chunks = 0
+    for doc in documents:
+        filename = f"{doc['id'].replace('/', '__')}.json"
+        chunks = doc.get("chunks") or [{"indexedData": doc.get("text", "")}]
+        for number, chunk in enumerate(chunks):
+            mapping[str(total_chunks)] = {
+                "documentId": doc["id"],
+                "documentUrl": doc.get("url", ""),
+                "documentPath": f"{name}/documents/{filename}",
+                "chunkNumber": number,
+            }
+            total_chunks += 1
+        (docs_dir / filename).write_text(
+            json.dumps(
+                {
+                    "id": doc["id"],
+                    "url": doc.get("url", ""),
+                    "text": doc.get("text", ""),
+                    "chunks": [
+                        {
+                            "indexedData": chunk.get("indexedData", ""),
+                            "metadata": chunk.get("metadata", {}),
+                            "chunkNumber": number,
+                        }
+                        for number, chunk in enumerate(chunks)
+                    ],
+                    "modifiedTime": doc.get("modifiedTime", "2026-01-01T00:00:00Z"),
+                }
+            )
+        )
+
+    (collection_dir / "indexes" / "index_document_mapping.json").write_text(
+        json.dumps(mapping)
+    )
+    index = faiss.IndexIDMap(faiss.IndexFlatL2(dimension))
+    vectors = np.ones((total_chunks, dimension), dtype=np.float32)
+    index.add_with_ids(vectors, np.arange(total_chunks, dtype=np.int64))
+    faiss.write_index(index, str(indexer_dir / "indexer.faiss"))
+
+    (collection_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "collectionName": name,
+                "updatedTime": "2026-01-01T00:00:00Z",
+                "lastModifiedDocumentTime": "2026-01-01T00:00:00Z",
+                "numberOfDocuments": len(documents),
+                "numberOfChunks": total_chunks,
+                "indexers": [{"name": indexer}],
+                "reader": {"type": reader_type},
+            }
+        )
+    )
+    return collection_dir
+
+
+@pytest.fixture
+def stub_sentence_embedder(monkeypatch: pytest.MonkeyPatch):
+    """Replace the query embedder the indexer factory loads, without a model.
+
+    The seeded vectors are all ones, so any deterministic query vector ranks
+    every chunk; the test asserts on the *payload*, not on similarity.
+    """
+    import numpy as np
+
+    class _Stub:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def embed(self, text):
+            return np.ones(384, dtype=np.float32)
+
+        def embed_batch(self, texts, batch_size=128, progress_callback=None):
+            return np.ones((len(texts), 384), dtype=np.float32)
+
+        def get_number_of_dimensions(self):
+            return 384
+
+        @property
+        def max_seq_length(self):
+            return 256
+
+    monkeypatch.setattr(
+        "indexed.core.v1.engine.indexes.embeddings.sentence_embeder.SentenceEmbedder",
+        _Stub,
+    )
+    return _Stub

@@ -57,9 +57,15 @@ def build_locator(metadata: Optional[Dict[str, Any]], doc_url: str) -> Locator:
         # have. An empty cleaning means "position unknown" -> ``document``.
         cleaned = [h.strip() for h in headings if isinstance(h, str) and h.strip()]
         if cleaned:
-            return {"kind": "headings", "headings": cleaned}
+            locator: Locator = {"kind": "headings", "headings": cleaned}
+            if path:
+                locator["path"] = path
+            return locator
 
-    return {"kind": "document"}
+    bare: Locator = {"kind": "document"}
+    if path:
+        bare["path"] = path
+    return bare
 
 
 def chunk_parts(chunk_data: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:

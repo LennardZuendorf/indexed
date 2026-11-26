@@ -3,7 +3,7 @@ type: feature-tech
 feature: workspace-selection
 sibling: product.md
 parent: ../../tech.md
-updated: 2026-11-22
+updated: 2026-11-26
 ---
 
 # Feature: Workspace Selection — Tech
@@ -100,8 +100,12 @@ there is no fallback to an unfiltered store and no fallback to an empty result.
   and `warnings: tuple[str, ...]`. The selection carries resolved
   `(id, name)` pairs plus the definition's path and root.
 - `indexed search` with no `--collection` filters the store's collections by the
-  selection (R1/R2 take effect here), in definition order; a selected collection
-  the store no longer serves is a fatal error, never a silent narrowing.
+  selection (R1/R2 take effect here), in definition order. A selected collection
+  the store no longer serves is named in the payload's `sources` (status
+  `missing`), with the other selected sources still answering — see
+  [project-search](../project-search/tech.md). Resolution itself still fails
+  closed: `load_selection(strict=True)` (LSP, storage) raises for such an entry,
+  and a malformed definition raises on every path.
 - `indexed search --collection NAME` outside the selection warns and proceeds
   (R5).
 - `indexed index create` does **not** edit the definition (a committed file is

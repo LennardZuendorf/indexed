@@ -247,8 +247,10 @@ def test_two_clients_see_their_own_selection(
     assert _doc_collections(out["b"]) == {BETA}
 
     # 2. Status agrees with search for the same client.
-    assert out["a_names"] == {"collections": [ALPHA]}
-    assert out["b_names"] == {"collections": [BETA]}
+    assert out["a_names"]["collections"] == [ALPHA]
+    assert out["b_names"]["collections"] == [BETA]
+    assert [source["collection"] for source in out["a_names"]["sources"]] == [ALPHA]
+    assert [source["collection"] for source in out["b_names"]["sources"]] == [BETA]
     assert [entry["name"] for entry in out["a_status"]["collections"]] == [ALPHA]
     assert [entry["name"] for entry in out["b_status"]["collections"]] == [BETA]
     assert set(out["a"]["collections"]) == {ALPHA}
