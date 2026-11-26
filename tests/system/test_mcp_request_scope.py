@@ -109,7 +109,9 @@ def _free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def _wait_for_port(proc: subprocess.Popen[str], port: int, timeout: float = 120.0) -> None:
+def _wait_for_port(
+    proc: subprocess.Popen[str], port: int, timeout: float = 120.0
+) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
         if proc.poll() is not None:
@@ -210,9 +212,10 @@ def test_two_clients_see_their_own_selection(
     _define(beta, BETA)
 
     async def drive() -> dict:
-        async with Client(server, roots=_roots(alpha)) as a, Client(
-            server, roots=_roots(beta)
-        ) as b:
+        async with (
+            Client(server, roots=_roots(alpha)) as a,
+            Client(server, roots=_roots(beta)) as b,
+        ):
             # Concurrently, against the one server.
             a_search, b_search = await asyncio.gather(
                 a.call_tool("search", {"query": ALPHA_NEEDLE}),
