@@ -177,7 +177,7 @@ Six keys, always all six together — a partial block is never emitted.
 | `short` | string | Abbreviated SHA (`%h`), as `git log --oneline` prints it. |
 | `author` | string | Author name of that commit. |
 | `email` | string | Author email of that commit. |
-| `committedAt` | string | Commit time as strict ISO-8601 with the commit's own UTC offset (`2026-11-15T09:22:52+01:00`), not a local rendering. |
+| `committedAt` | string | Commit time as strict ISO-8601 with the commit's own UTC offset (`2026-11-15T09:22:52+01:00`), not a local rendering. A zero offset is written `Z` (`2026-11-15T08:22:52Z`), byte for byte as git's `%cI` prints it. |
 | `subject` | string | Commit subject, truncated to its first 200 characters. |
 
 When git cannot answer, the **whole block is omitted** rather than carrying six
@@ -238,7 +238,7 @@ chunk can name a different commit than its document's `git` block.
 | `short` | string | Abbreviated SHA. |
 | `author` | string | Author name. |
 | `email` | string | Author email. |
-| `committedAt` | string | Commit time, strict ISO-8601 with the commit's own offset. |
+| `committedAt` | string | Commit time, strict ISO-8601 with the commit's own offset — byte-identical to the document-level `committedAt` when both name the same commit, `Z` included. |
 | `subject` | string | Commit subject. |
 | `startLine` | int | First line of the covered span, **1-based**. |
 | `endLine` | int | Last line of the covered span, **1-based and inclusive**. |

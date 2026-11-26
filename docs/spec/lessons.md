@@ -2519,3 +2519,16 @@ message helper in `git_meta`, one line in each renderer, one `collection_errors`
 MCP. An option silently dropped is worse than one that errors: the rows look like an answer.
 **Tags:** cli, mcp, git, ux
 **Date:** 2026-11-25
+
+### One field, two producers, two spellings (2026-11-26)
+**Pattern:** `committedAt` is filled from two code paths that both claim ISO-8601:
+document-level from git's own `%cI`, hit-level from `datetime.isoformat()`. For a UTC
+commit git writes `2026-01-05T10:00:00Z` and Python writes `2026-01-05T10:00:00+00:00` —
+same instant, different bytes, so a consumer comparing or sorting the two surfaces sees
+two answers for one commit (dogfood M9). Every non-zero offset agreed, which is why
+`.startswith("2022-01-01")` passed for months.
+**Rule:** when two paths feed one contract field, the test asserts byte equality of their
+outputs, never a prefix — and the reference states the normalisation rule (here: zero
+offset is `Z`, exactly as `%cI`) instead of leaving it to whichever library runs last.
+**Tags:** git, contract, testing
+**Date:** 2026-11-26

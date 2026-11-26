@@ -208,7 +208,13 @@ _SPAN_FIELDS = ("commit", "short", "author", "email", "committedAt", "subject")
 
 
 def _iso_time(epoch: str, tz: str) -> str:
-    """Porcelain's ``<epoch> <±HHMM>`` as the same ISO-8601 form git prints."""
+    """Porcelain's ``<epoch> <±HHMM>`` as the same ISO-8601 form git prints.
+
+    Byte-identical to ``git log --format=%cI`` for the same commit, including
+    the zero offset: git writes ``Z``, ``datetime.isoformat()`` writes
+    ``+00:00``. One commit must not carry two spellings of one instant in one
+    payload — document-level ``git.committedAt`` comes from ``%cI`` directly.
+    """
     try:
         offset_seconds = 0
         if len(tz) == 5 and tz[0] in "+-":
@@ -220,7 +226,8 @@ def _iso_time(epoch: str, tz: str) -> str:
         )
     except (TypeError, ValueError, OSError):
         return ""
-    return stamp.isoformat(timespec="seconds")
+    rendered = stamp.isoformat(timespec="seconds")
+    return rendered[:-6] + "Z" if offset_seconds == 0 else rendered
 
 
 def _parse_porcelain(out: str) -> List[Optional[Dict[str, Any]]]:

@@ -537,6 +537,11 @@ def test_history_uses_literal_path_and_committer_date(git_repo):
     assert info["committedAt"].startswith("2022-01-01")
     line = git_meta.blame_lines(str(git_repo), "note[1].md")[0]
     assert line["committedAt"].startswith("2022-01-01")
+    # One commit, one spelling: document-level `git.committedAt` comes from git's
+    # own `%cI`, so blame must render the same instant byte-identically — git
+    # writes `Z` for a zero offset, `datetime.isoformat()` writes `+00:00`.
+    assert line["committedAt"] == info["committedAt"]
+    assert line["committedAt"].endswith("Z")
     assert line["epoch"] == 1577836800
     assert git_meta.recent_commit_count(str(git_repo), "note[1].md", 0) == 1
 
