@@ -3,7 +3,7 @@ type: feature-plan
 feature: mcp-request-scope
 sibling: tech.md
 parent: ../../plan.md
-updated: 2026-11-26
+updated: 2026-11-27
 ---
 
 # Feature: MCP Request Scope — Plan
