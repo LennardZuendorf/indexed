@@ -3,7 +3,7 @@ type: feature-plan
 feature: mcp-request-scope
 sibling: tech.md
 parent: ../../plan.md
-updated: 2026-11-26
+updated: 2026-11-27
 ---
 
 # Feature: MCP Request Scope — Plan
@@ -15,9 +15,9 @@ updated: 2026-11-26
 
 | # | Slice | Gate | Status |
 |---|-------|------|--------|
-| 1 | `mcp/scope.py` — roots → one definition, three named errors | two roots, two definitions, two answers; zero and two definitions each raise their own type | ⬜ TODO |
-| 2 | tools and resources resolve scope per request | one server, two clients, `search` and `resource://collections*` each scoped to their own client | ⬜ TODO |
-| 3 | CLI and LSP resolve the same fixture to the same names | one fixture, three surfaces, identical collection names | ⬜ TODO |
+| 1 | `mcp/scope.py` — roots → one definition, three named errors | two roots, two definitions, two answers; zero and two definitions each raise their own type | ✅ DONE |
+| 2 | tools and resources resolve scope per request | one server, two clients, `search` and `resource://collections*` each scoped to their own client | ✅ DONE |
+| 3 | CLI and LSP resolve the same fixture to the same names | one fixture, three surfaces, identical collection names | ✅ DONE |
 
 ## Acceptance test (can go red)
 
@@ -32,6 +32,10 @@ one global store, two concurrent FastMCP clients:
 - a client with no roots gets a `NoRequestScopeError` envelope and zero
   collections;
 - a client presenting both roots gets an `AmbiguousRequestScopeError` envelope;
+- a `resource://collection/{name}` read for a name outside the client's
+  selection is the *same* `CollectionOutsideScopeError` envelope — message
+  included — that `search_collection` returns, and the in-scope read still
+  answers with that collection's status;
 - the CLI (`indexed search`, cwd `alpha`) and the LSP backend resolved for
   `alpha` name the same collections as client A.
 
