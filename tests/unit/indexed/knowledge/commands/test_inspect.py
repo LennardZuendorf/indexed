@@ -6,6 +6,7 @@ We focus on realistic behaviors:
 - JSON vs rich output paths
 """
 
+import json
 from pathlib import Path
 from typing import List
 from unittest.mock import MagicMock, patch
@@ -534,6 +535,314 @@ class TestInspectListViewPathRendering:
         assert "/short/path" in result.stdout
         assert "/short/path2" in result.stdout
         assert "/another/short/path" in result.stdout
+
+
+# ── #108 slice A: source metadata ──────────────────────────────────────────
+
+JIRA_URL = "https://example.atlassian.net"
+JIRA_QUERY = "project = ABC AND status != Done ORDER BY updated DESC"
+_V1_INDEXER = "indexer_FAISS_IndexFlatL2__embeddings_all-MiniLM-L6-v2"
+
+
+def _write_v1_manifest(root: Path, name: str, reader: dict | None) -> None:
+    """A minimal v1 collection on disk: manifest only (no index/model needed)."""
+    coll = root / name
+    coll.mkdir(parents=True)
+    manifest = {
+        "collectionName": name,
+        "numberOfDocuments": 2,
+        "numberOfChunks": 5,
+        "createdTime": "2026-01-01T00:00:00Z",
+        "updatedTime": "2026-01-02T00:00:00Z",
+        "lastModifiedDocumentTime": "2026-01-02T00:00:00Z",
+        "indexers": [{"name": _V1_INDEXER}],
+    }
+    if reader is not None:
+        manifest["reader"] = reader
+    (coll / "manifest.json").write_text(json.dumps(manifest))
+
+
+def _write_v2_manifest(root: Path, name: str, reader: dict | None) -> None:
+    """A minimal v2 collection on disk — no LlamaIndex import needed to read it."""
+    coll = root / name
+    coll.mkdir(parents=True)
+    manifest = {
+        "version": "2",
+        "collectionName": name,
+        "createdTime": "2026-01-01T00:00:00Z",
+        "updatedTime": "2026-01-02T00:00:00Z",
+        "lastModifiedDocumentTime": "2026-01-02T00:00:00Z",
+        "numberOfDocuments": 2,
+        "numberOfChunks": 5,
+        "reader": reader if reader is not None else {"type": "localFiles"},
+        "engine": {
+            "embedding": {
+                "provider": "local",
+                "model": "all-MiniLM-L6-v2",
+                "dimension": 384,
+            },
+            "vectorStore": "simple",
+            "scoreKind": "cosine",
+            "llamaIndexCoreVersion": "0.0.0",
+            "indexedVersion": "0.0.0",
+        },
+    }
+    (coll / "manifest.json").write_text(json.dumps(manifest))
+
+
+def _json_payload(text: str) -> dict:
+    """Parse the JSON object out of stdout (tolerates any leading log lines)."""
+    start, end = text.find("{"), text.rfind("}")
+    assert start != -1 and end > start, text
+    return json.loads(text[start : end + 1])
+
+
+def _normalized(text: str) -> str:
+    """stdout with card borders and Rich's wrapping collapsed to single spaces."""
+    return " ".join(text.replace("│", " ").split())
+
+
+@pytest.fixture
+def _real_engine_at(tmp_path, monkeypatch):
+    """Point the CLI at ``tmp_path`` and leave the *real* facade inspect in place.
+
+    These tests exercise the v1/v2 engine paths end-to-end from a manifest on
+    disk — nothing here stubs ``inspect_cmd.inspect``.
+    """
+    ctx = type("Ctx", (), {"collections_path": tmp_path, "mode": "global"})()
+    monkeypatch.setattr(
+        "indexed.cli.composition.resolve_collections_context", lambda *a, **kw: ctx
+    )
+    return tmp_path
+
+
+class TestInspectSourceMetadata:
+    """#108 slice A — inspect must say *where* the data comes from, not just
+    which engine type was used, and must not mislabel the storage directory as
+    the source."""
+
+    def test_v1_detail_shows_storage_and_full_source_metadata(self, _real_engine_at):
+        """A jira reader's baseUrl and JQL reach the detail card in full; the
+        storage directory is labelled ``Storage``, not ``Path``."""
+        _write_v1_manifest(
+            _real_engine_at,
+            "jira-proj",
+            {"type": "jira", "baseUrl": JIRA_URL, "query": JIRA_QUERY},
+        )
+
+        result = CliRunner(env={"COLUMNS": "100"}).invoke(
+            inspect_cmd.app, ["jira-proj"]
+        )
+
+        assert result.exit_code == 0, result.stdout
+        out = _normalized(result.stdout)
+        assert "Storage" in out
+        assert "URL" in out
+        assert JIRA_URL in out
+        # The full JQL survives both the card width and the fold rule.
+        assert JIRA_QUERY in out
+        assert "…" not in result.stdout
+        # A URL-only reader records no path — and must not claim otherwise.
+        assert "Source" not in out
+
+    def test_v1_json_carries_source_keys_and_storage_path(self, _real_engine_at):
+        """``--simple-output`` keeps ``path`` and adds the storage/source keys."""
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
+
+        _write_v1_manifest(
+            _real_engine_at,
+            "jira-proj",
+            {"type": "jira", "baseUrl": JIRA_URL, "query": JIRA_QUERY},
+        )
+        set_simple_output(True)
+        try:
+            result = CliRunner().invoke(inspect_cmd.app, ["jira-proj"])
+        finally:
+            reset_simple_output()
+
+        assert result.exit_code == 0, result.stdout
+        payload = _json_payload(result.stdout)
+        assert payload["source_type"] == "jira"
+        assert payload["source_url"] == JIRA_URL
+        assert payload["source_query"] == JIRA_QUERY
+        assert payload["source_path"] is None
+        assert payload["path"] == payload["storage_path"]
+        assert payload["storage_path"]
+
+    def test_v1_reader_less_collection_says_source_not_recorded(self, _real_engine_at):
+        """No reader block: the card says so honestly and JSON uses nulls."""
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
+
+        _write_v1_manifest(_real_engine_at, "plain", None)
+
+        detail = CliRunner(env={"COLUMNS": "100"}).invoke(inspect_cmd.app, ["plain"])
+        assert detail.exit_code == 0, detail.stdout
+        assert "Source not recorded" in _normalized(detail.stdout)
+
+        set_simple_output(True)
+        try:
+            machine = CliRunner().invoke(inspect_cmd.app, ["plain"])
+        finally:
+            reset_simple_output()
+
+        payload = _json_payload(machine.stdout)
+        assert payload["source_path"] is None
+        assert payload["source_url"] is None
+        assert payload["source_query"] is None
+        assert payload["path"] == payload["storage_path"]
+
+    def test_v1_files_reader_source_row_is_the_base_path(self, _real_engine_at):
+        """A files collection records ``basePath`` — that is the ``Source``."""
+        _write_v1_manifest(
+            _real_engine_at,
+            "docs",
+            {"type": "localFiles", "basePath": "/home/me/project/docs"},
+        )
+
+        result = CliRunner(env={"COLUMNS": "100"}).invoke(inspect_cmd.app, ["docs"])
+
+        assert result.exit_code == 0, result.stdout
+        out = _normalized(result.stdout)
+        assert "Source /home/me/project/docs" in out
+        assert "URL" not in out
+        assert "Query" not in out
+
+    def test_v2_collection_gets_the_same_source_metadata(self, _real_engine_at):
+        """The v2 engine path (real facade routing, v2 manifest on disk) reports
+        the same three fields as v1 — the reader block is shared."""
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
+        from indexed.core.engine import inspect as engine_inspect
+
+        _write_v2_manifest(
+            _real_engine_at,
+            "jira-v2",
+            {"type": "jira", "baseUrl": JIRA_URL, "query": JIRA_QUERY},
+        )
+
+        # Prove this is the v2 path: the engine descriptor reports v2.
+        info = engine_inspect(["jira-v2"], collections_path=str(_real_engine_at))[0]
+        assert info.source_url == JIRA_URL
+        assert info.source_query == JIRA_QUERY
+
+        set_simple_output(True)
+        try:
+            result = CliRunner().invoke(inspect_cmd.app, ["jira-v2"])
+        finally:
+            reset_simple_output()
+
+        assert result.exit_code == 0, result.stdout
+        payload = _json_payload(result.stdout)
+        assert payload["engine"] == "2"
+        assert payload["source_url"] == JIRA_URL
+        assert payload["source_query"] == JIRA_QUERY
+        assert payload["path"] == payload["storage_path"]
+
+    def test_v2_detail_renders_the_query_without_ellipsis(self, _real_engine_at):
+        _write_v2_manifest(
+            _real_engine_at,
+            "jira-v2",
+            {"type": "jira", "baseUrl": JIRA_URL, "query": JIRA_QUERY},
+        )
+
+        result = CliRunner(env={"COLUMNS": "100"}).invoke(inspect_cmd.app, ["jira-v2"])
+
+        assert result.exit_code == 0, result.stdout
+        out = _normalized(result.stdout)
+        assert "Storage" in out
+        assert JIRA_URL in out
+        assert JIRA_QUERY in out
+        assert "…" not in result.stdout
+
+    def test_long_source_values_fold_instead_of_truncating(self):
+        """The row rule is label-agnostic: a long Query folds and an
+        unbreakable long URL (no spaces to wrap on) folds too — neither is
+        ellipsis-truncated. The old rule only folded the literal ``Path``
+        label, so any other long row silently lost its tail."""
+        from io import StringIO
+
+        from rich.console import Console
+
+        from indexed.cli.utils.components.cards import create_detail_card
+
+        query = (
+            "project = ABC AND status != Done AND labels in (alpha, beta) "
+            "AND updated >= -30d ORDER BY updated DESC"
+        )
+        long_url = (
+            "https://example.atlassian.net/wiki/spaces/ENG/pages/123456789/"
+            "Some+Very+Long+Page+Title+That+Keeps+Going"
+        )
+        stream = StringIO()
+        console = Console(file=stream, width=100, force_terminal=False)
+        console.print(
+            create_detail_card(
+                title="jira-proj", rows=[("Query", query), ("URL", long_url)]
+            )
+        )
+        rendered = stream.getvalue()
+
+        assert query in _normalized(rendered)
+        # Folding chops an unbreakable token across lines without changing it,
+        # so the value survives when the card's line breaks are removed.
+        assert "".join(long_url.split()) in "".join(rendered.replace("│", "").split())
+        assert "…" not in rendered
+
+    def test_brief_list_uses_the_storage_label(self, _real_engine_at):
+        """The compact list keeps its shape but names the directory honestly."""
+        _write_v1_manifest(
+            _real_engine_at,
+            "jira-proj",
+            {"type": "jira", "baseUrl": JIRA_URL, "query": JIRA_QUERY},
+        )
+
+        result = CliRunner(env={"COLUMNS": "200"}).invoke(inspect_cmd.app, [])
+
+        assert result.exit_code == 0, result.stdout
+        assert "Storage" in result.stdout
+        assert "Path" not in result.stdout
+
+    def test_list_json_carries_storage_and_source_keys(self, _real_engine_at):
+        """``inspect --simple-output`` with no name emits a JSON array: every
+        row carries ``storage_path`` beside the unchanged ``path`` and the
+        ``source_*`` keys (null when the manifest recorded none)."""
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
+
+        _write_v1_manifest(
+            _real_engine_at,
+            "jira-proj",
+            {"type": "jira", "baseUrl": JIRA_URL, "query": JIRA_QUERY},
+        )
+        _write_v1_manifest(_real_engine_at, "plain", {"type": "localFiles"})
+        set_simple_output(True)
+        try:
+            result = CliRunner().invoke(inspect_cmd.app, [])
+        finally:
+            reset_simple_output()
+
+        assert result.exit_code == 0, result.stdout
+        start, end = result.stdout.find("["), result.stdout.rfind("]")
+        assert start != -1 and end > start, result.stdout
+        rows = {row["name"]: row for row in json.loads(result.stdout[start : end + 1])}
+
+        assert rows["jira-proj"]["source_url"] == JIRA_URL
+        assert rows["jira-proj"]["source_query"] == JIRA_QUERY
+        assert rows["jira-proj"]["source_path"] is None
+        assert rows["plain"]["source_query"] is None
+        for row in rows.values():
+            assert row["storage_path"] == row["path"]
+            assert row["storage_path"]
 
 
 @pytest.fixture(autouse=True, scope="module")

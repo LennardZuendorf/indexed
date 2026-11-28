@@ -28,6 +28,7 @@ from loguru import logger
 
 from indexed.config.errors import IndexedError
 from indexed.core.errors import CoreV2Error
+from indexed.core.source_metadata import source_metadata
 from indexed.core.v2._common import collections_base, discover_v2_collections
 
 # ── exception boundary ────────────────────────────────────────────────────
@@ -228,10 +229,15 @@ def inspect(
         manifest = _read_manifest(base, name)
         if manifest is None:
             continue
+        # Same reader block as v1 — one shared allowlist projection (#108).
+        source = source_metadata(manifest.reader.model_dump())
         out.append(
             {
                 "name": name,
                 "source_type": manifest.reader.type,
+                "source_path": source["source_path"],
+                "source_url": source["source_url"],
+                "source_query": source["source_query"],
                 "number_of_documents": manifest.number_of_documents,
                 "number_of_chunks": manifest.number_of_chunks,
                 "relative_path": _relative_path(base / name),

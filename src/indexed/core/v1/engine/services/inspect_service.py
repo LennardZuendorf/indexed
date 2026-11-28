@@ -16,6 +16,7 @@ from loguru import logger
 
 from .models import CollectionStatus, CollectionInfo
 from indexed.config.errors import StorageError
+from indexed.core.source_metadata import source_metadata
 from indexed.core.v1.engine.persisters.disk_persister import DiskPersister
 from indexed.core.v1.engine.indexes.indexer_factory import load_indexer
 from indexed.core.v1.config_models import get_default_collections_path
@@ -327,6 +328,7 @@ class InspectService:
 
                 # Gather all metadata
                 source_type = manifest.get("reader", {}).get("type")
+                source = source_metadata(manifest.get("reader"))
                 abs_path = os.path.join(self._persister.base_path, name)
                 relative_path = os.path.relpath(abs_path, start=os.getcwd())
                 disk_size = self._calculate_disk_size(name)
@@ -348,6 +350,9 @@ class InspectService:
                 info = CollectionInfo(
                     name=name,
                     source_type=source_type,
+                    source_path=source["source_path"],
+                    source_url=source["source_url"],
+                    source_query=source["source_query"],
                     number_of_documents=number_of_documents,
                     number_of_chunks=manifest.get("numberOfChunks", 0),
                     relative_path=relative_path,

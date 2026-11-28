@@ -54,12 +54,18 @@ def _build_collection_rows(
     include_created: bool = False,
     engine: "Optional[EngineDescriptor]" = None,
     include_freshness: bool = False,
+    include_source: bool = False,
 ) -> list[tuple[str, str]]:
     """Build standard info rows for a collection.
 
     Centralizes row construction so all views (brief, verbose, detail)
     use the same labels and formatting. An engine indicator (R13) is prepended
     when a descriptor is supplied.
+
+    ``relative_path`` is the collection's STORAGE directory, so it is labelled
+    ``Storage`` — the ``Source`` row (only in the detail/verbose views) is
+    where the data came from. A collection whose manifest records no source
+    says ``not recorded`` rather than leaving the reader to guess.
     """
     rows = []
     indicator = _format_engine_indicator(engine)
@@ -67,7 +73,20 @@ def _build_collection_rows(
         rows.append(("Engine", indicator))
     rows.append(("Type", coll.source_type or "Unknown"))
     if coll.relative_path:
-        rows.append(("Path", coll.relative_path))
+        rows.append(("Storage", coll.relative_path))
+    if include_source:
+        # One row per recorded fact; a reader with no source at all gets the
+        # honest placeholder. `source_path` is files-only, so a URL-only
+        # reader (Jira, Confluence) shows URL/Query and no Source row — never
+        # "not recorded" beside a URL that plainly *is* recorded (#108).
+        if coll.source_path:
+            rows.append(("Source", coll.source_path))
+        if coll.source_url:
+            rows.append(("URL", coll.source_url))
+        if coll.source_query:
+            rows.append(("Query", coll.source_query))
+        if not (coll.source_path or coll.source_url or coll.source_query):
+            rows.append(("Source", "not recorded"))
     rows.append(("Documents", str(coll.number_of_documents)))
     rows.append(("Chunks", str(coll.number_of_chunks)))
     if coll.disk_size_bytes:
@@ -163,6 +182,7 @@ def _show_verbose_list(
             include_index=True,
             include_created=True,
             engine=engines.get(coll.name),
+            include_source=True,
         )
         card = create_detail_card(title=coll.name, rows=rows)
         console.print(card)
@@ -193,6 +213,7 @@ def format_collection_detail(
         include_created=True,
         engine=engine,
         include_freshness=True,
+        include_source=True,
     )
     card = create_detail_card(title=info.name, rows=rows)
     console.print(card)
@@ -211,6 +232,21 @@ def _engine_json_fields(
     }
 
 
+def _source_json_fields(coll: "CollectionInfo") -> Dict[str, Optional[str]]:
+    """#108 source/storage fields, shared by both JSON shapes.
+
+    ``path`` keeps its historical value and meaning (the collection's storage
+    directory) byte-for-byte; ``storage_path`` is the unambiguous name for it.
+    The source fields are ``null`` when the manifest records nothing.
+    """
+    return {
+        "storage_path": coll.relative_path,
+        "source_path": coll.source_path,
+        "source_url": coll.source_url,
+        "source_query": coll.source_query,
+    }
+
+
 def format_collection_json(
     info: "CollectionInfo", engine: "Optional[EngineDescriptor]" = None
 ) -> None:
@@ -220,6 +256,7 @@ def format_collection_json(
         **_engine_json_fields(engine),
         "source_type": info.source_type,
         "path": info.relative_path,
+        **_source_json_fields(info),
         "number_of_documents": info.number_of_documents,
         "number_of_chunks": info.number_of_chunks,
         "disk_size_bytes": info.disk_size_bytes,
@@ -243,6 +280,7 @@ def format_collections_json(
             **_engine_json_fields(engines.get(c.name)),
             "source_type": c.source_type,
             "path": c.relative_path,
+            **_source_json_fields(c),
             "number_of_documents": c.number_of_documents,
             "number_of_chunks": c.number_of_chunks,
             "disk_size_bytes": c.disk_size_bytes,

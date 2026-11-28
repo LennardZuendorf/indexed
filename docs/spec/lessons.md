@@ -1,7 +1,7 @@
 ---
 type: lessons
 scope: project
-updated: 2026-11-26
+updated: 2026-11-28
 ---
 
 # Lessons Learned
@@ -2653,3 +2653,17 @@ a test can assert it. A nested connection can never take a cursor inside a list 
 paginate it with a follow-up query addressed by node id, and dedupe by id so overlapping
 pages cannot double-index.
 **Tags:** connectors, evidence, honesty
+
+### A display rule keyed on one label is a rule the next label escapes (2026-11-28)
+**Pattern:** the card renderer folded an over-long value only when the row label was
+literally `Path`. That same row was *called* `Path` while holding the storage directory,
+so one mislabel both hid where the data came from (inspect printed no URL and no JQL) and
+made the single fold rule look correct. Adding `Source`/`URL`/`Query` rows without touching
+it would have silently ellipsis-truncated a JQL — and any unbreakable URL, since only values
+with spaces wrap on their own.
+**Rule:** key a presentation rule on the value's shape (fold anything that overflows), never
+on a label literal; when a field's meaning changes, rename the label in every view in the
+same change and pin the old name's absence in a test. Render a row only from a fact the
+manifest actually recorded — a `not recorded` placeholder beside a recorded URL contradicts
+itself, which is the defect class this was meant to fix.
+**Tags:** cli, rendering, honesty
