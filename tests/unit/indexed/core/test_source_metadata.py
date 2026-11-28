@@ -4,7 +4,11 @@ One allowlist for both engines: only `basePath`, the URL keys and `query` may
 reach the output — every other reader key (a connector's own config) must not.
 """
 
+import pytest
+
 from indexed.core.source_metadata import SOURCE_KEYS, source_metadata
+
+pytestmark = pytest.mark.unit
 
 
 class TestSourceMetadataAllowlist:
