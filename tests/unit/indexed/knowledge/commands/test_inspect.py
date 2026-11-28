@@ -796,6 +796,54 @@ class TestInspectSourceMetadata:
         assert "".join(long_url.split()) in "".join(rendered.replace("│", "").split())
         assert "…" not in rendered
 
+    def test_brief_list_uses_the_storage_label(self, _real_engine_at):
+        """The compact list keeps its shape but names the directory honestly."""
+        _write_v1_manifest(
+            _real_engine_at,
+            "jira-proj",
+            {"type": "jira", "baseUrl": JIRA_URL, "query": JIRA_QUERY},
+        )
+
+        result = CliRunner(env={"COLUMNS": "200"}).invoke(inspect_cmd.app, [])
+
+        assert result.exit_code == 0, result.stdout
+        assert "Storage" in result.stdout
+        assert "Path" not in result.stdout
+
+    def test_list_json_carries_storage_and_source_keys(self, _real_engine_at):
+        """``inspect --simple-output`` with no name emits a JSON array: every
+        row carries ``storage_path`` beside the unchanged ``path`` and the
+        ``source_*`` keys (null when the manifest recorded none)."""
+        from indexed.cli.utils.simple_output import (
+            reset_simple_output,
+            set_simple_output,
+        )
+
+        _write_v1_manifest(
+            _real_engine_at,
+            "jira-proj",
+            {"type": "jira", "baseUrl": JIRA_URL, "query": JIRA_QUERY},
+        )
+        _write_v1_manifest(_real_engine_at, "plain", {"type": "localFiles"})
+        set_simple_output(True)
+        try:
+            result = CliRunner().invoke(inspect_cmd.app, [])
+        finally:
+            reset_simple_output()
+
+        assert result.exit_code == 0, result.stdout
+        start, end = result.stdout.find("["), result.stdout.rfind("]")
+        assert start != -1 and end > start, result.stdout
+        rows = {row["name"]: row for row in json.loads(result.stdout[start : end + 1])}
+
+        assert rows["jira-proj"]["source_url"] == JIRA_URL
+        assert rows["jira-proj"]["source_query"] == JIRA_QUERY
+        assert rows["jira-proj"]["source_path"] is None
+        assert rows["plain"]["source_query"] is None
+        for row in rows.values():
+            assert row["storage_path"] == row["path"]
+            assert row["storage_path"]
+
 
 @pytest.fixture(autouse=True, scope="module")
 def _composition_patch_does_not_leak():
