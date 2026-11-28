@@ -41,6 +41,13 @@ class CollectionInfo:
     name: str
     source_type: Optional[str] = None
 
+    # Where the data came from (#108) — from the manifest's reader block, via
+    # the shared `core.source_metadata` allowlist. `None` when not recorded;
+    # `relative_path` above stays the STORAGE directory, never the source.
+    source_path: Optional[str] = None
+    source_url: Optional[str] = None
+    source_query: Optional[str] = None
+
     # Counts
     number_of_documents: int = 0
     number_of_chunks: int = 0
